@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+
+  # ----- ENDER SERVICE -----
+  ender-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ender-service
+    hostname: ender
+    stdin_open: true
+    tty: true
+    ports:
+      - "5000:5000" # Example Ender-specific service port
+    environment:
+      - EXAMPLE_VAR=value
+    networks:
+      ender-net:
+        ipv4_address: 10.2.2.4
+      eshu_localnet:
+        ipv4_address: 10.1.1.4
+
+# ----- NETWORK -----
+
+networks:
+  ender-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.2.2.0/24
+          gateway: 10.2.2.2
+  eshu_localnet:
+    external: true
