@@ -29,4 +29,16 @@ Testing the connectivity between server and metasploit
 "docker exec -it ender-service /bin/bash"
 "python ender_server/server.py"
 
+To try out CLI
+Terminal 1:
+"docker exec -it ender-service /bin/bash"
+"python ender_server/server.py"
+
+Terminal 2:
+"docker exec -it ender-service /bin/bash"
+"python ender_client/client.py"
+
+Enter Ip addr = "10.1.1.2"
+Enter port number = "80"
+
 
