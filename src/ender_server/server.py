@@ -9,6 +9,27 @@ players_data_base = {}
 games_data_base = {}
 scores = {}
 
+def load_msf_config(file_path):
+    """Load MSF configuration from a .env file."""
+    config = {}
+    try:
+        with open(file_path, "r") as f:
+            for line in f:
+                if "=" in line and not line.startswith("#"):  # Ignore comments
+                    key, value = line.strip().split("=", 1)
+                    config[key] = value
+    except FileNotFoundError:
+        print(f"[!] msf_config.env not found at {file_path}")
+        exit(1)
+    return config
+
+MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
+msf_config = load_msf_config(MSF_CONFIG_PATH)
+
+MSF_HOST = msf_config["MSF_HOST"]
+MSF_PORT = msf_config["MSF_PORT"]
+MSF_PASSWORD = msf_config["MSF_PASSWORD"]
+
 #easy testing
 # host = "10.10.1.1"
 # port_tester = 12345
@@ -33,8 +54,8 @@ def handle_message():
         options = decoded_msg.split()
         command = options[0]
 
-        # if command == "register":
-        #     response = register_player(options)
+        if command == "connect":
+            response = connect_msf()
         # elif command == "query":
         #     if options[1] == "players":
         #         response = query_players()
@@ -50,35 +71,30 @@ def handle_message():
         #     response = end_games(options)
         # elif command == "de-register":
         #     response = deregister_player(options)
-        # else:
-        #     response =  "Please re-enter the command: "
-        response = "I am Server, I am not BOOOTTTT!!!"
+        else:
+            response =  "Please re-enter the command: "
 
         tracker_socket.sendto(response.encode(), peer_addr)
 
+def connect_msf():
+    """Handles connection to the Metasploit RPC server."""
+    print("[+] Connecting to Metasploit...")
+    try:
+        msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+        print("[+] Successfully connected to Metasploit!")
+        return "[+] Connected to Metasploit!"
+    except Exception as e:
+        print(f"[!] Failed to connect to MSF: {e}")
+        return f"[!] Failed to connect: {e}"
+
+
+
 def main():
-    # # Read Metasploit environment variables
-    # msf_host = os.getenv("MSF_HOST", "127.0.0.1")
-    # msf_port = int(os.getenv("MSF_PORT", 1337))
-    # msf_password = os.getenv("MSF_PASSWORD", "passwd")
-
-    # # Initialize and connect to Metasploit
-    # print("[+] Connecting to Metasploit...")
-    # try:
-    #     msf = Metasploit(password=msf_password, server=msf_host, port=msf_port)
-    #     print("[+] Successfully started and connected to Metasploit!")
-    # except Exception as e:
-    #     print(f"[!] Failed to connect to Metasploit: {e}")
-
     receive_thread = threading.Thread(target = handle_message)
     receive_thread.start()
     receive_thread.join()
     tracker_socket.close()
 
 if __name__ == "__main__":
-    # Ensure the script uses the environment variables from your setup
-    os.environ["MSF_HOST"] = "10.1.1.2"
-    os.environ["MSF_PORT"] = "1337"
-    os.environ["MSF_PASSWORD"] = "memes"
     main()
 
