@@ -25,5 +25,8 @@ Terminal 3:
 "ping ender-service"
 "ping operator"
 
+Testing the connectivity between server and metasploit
+"docker exec -it ender-service /bin/bash"
+"python ender_server/server.py"
 
 
