@@ -41,8 +41,11 @@ RUN git clone --depth 1 https://github.com/rapid7/metasploit-framework.git /opt/
 
 ENV PATH="/opt/metasploit-framework/:$PATH"
 
-# Copy custom Metasploit RC file
-COPY ./eshu/src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
+# # Copy custom Metasploit RC file
+# COPY ./eshu/src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
+# Copy the msfconsole.rc file into the expected directory
+COPY ./eshu/src/config_files/msfconsole.rc /usr/src/metasploit-framework/docker/msfconsole.rc
+
 
 # Install Sliver-py
 RUN pip install sliver-py
@@ -71,6 +74,10 @@ WORKDIR /workspace/ender
 
 # Copy Ender’s source code into the container
 COPY ./src/ /workspace/ender/
+COPY ./eshu/ /workspace/ender/eshu/
+
+# Set PYTHONPATH to include the Eshu module
+ENV PYTHONPATH="/workspace/ender/eshu/src:$PYTHONPATH"
 
 # Expose Ender-specific ports
 EXPOSE 1337 8081
