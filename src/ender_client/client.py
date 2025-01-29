@@ -7,8 +7,8 @@ name = input("Your name: ")
 tracker_ip = "10.2.2.4"  # Server's IP
 tracker_port = 5000  # Server's port
 
-target_ip = input("Please enter victim's IP: ")  # Target for attacks
-target_port = int(input("Please enter victim port: "))
+target_ip = "10.1.1.4"  # Target for attacks
+target_port = 80
 
 # ✅ REMOVE connect() → Not needed for UDP
 # client_socket.connect((target_ip , target_port))  ❌ REMOVE THIS

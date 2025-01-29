@@ -1,34 +1,77 @@
-import socket 
-import threading 
+import os
+import socket
+import threading
+import time
 from eshu.src.Eshu.c2.msf.metasploit import Metasploit
 
-import time
-import os
-
-players_data_base = {}
-games_data_base = {}
-scores = {}
+# Load Metasploit config
+MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
 
 def load_msf_config(file_path):
-    """Load MSF configuration from a .env file."""
-    config = {}
+    """Load MSF configuration from a .env file with default fallbacks."""
+    config = {"MSF_HOST": "127.0.0.1", "MSF_PORT": 1337, "MSF_PASSWORD": "memes"}
+    
     try:
         with open(file_path, "r") as f:
             for line in f:
                 if "=" in line and not line.startswith("#"):  # Ignore comments
                     key, value = line.strip().split("=", 1)
                     config[key] = value
+
+        # Ensure MSF_PORT is an integer
+        config["MSF_PORT"] = int(config.get("MSF_PORT", 1337))  # Ensures valid integer
+        
     except FileNotFoundError:
-        print(f"[!] msf_config.env not found at {file_path}")
-        exit(1)
+        print(f"[!] msf_config.env not found at {file_path}, using defaults.")
+
+    except ValueError:
+        print("[!] Invalid MSF_PORT in config, using default 1337.")
+        config["MSF_PORT"] = 1337  # Fallback if port is invalid
+
     return config
 
-MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
 msf_config = load_msf_config(MSF_CONFIG_PATH)
-
 MSF_HOST = msf_config["MSF_HOST"]
 MSF_PORT = msf_config["MSF_PORT"]
 MSF_PASSWORD = msf_config["MSF_PASSWORD"]
+
+# ✅ Automatically start MSF RPC inside the operator (Eshu)
+def start_msf_rpc():
+    """Send a command to start Metasploit RPC in the Eshu operator container."""
+    operator_ip = "10.1.1.2"  # Update if necessary
+
+    print(f"[+] Sending remote start command to {operator_ip}...")
+    try:
+        ssh_command = (
+            f"ssh root@{operator_ip} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
+            f"ServerPort={MSF_PORT} ServerHost=0.0.0.0; exit\"'"
+        )
+        os.system(ssh_command)
+        print(f"[+] MSF RPC started on {operator_ip}:{MSF_PORT}")
+    except Exception as e:
+        print(f"[!] Failed to start MSF RPC remotely: {e}")
+
+# ✅ Improved Metasploit Connection
+def connect_msf():
+    """Handles connection to the Metasploit RPC server."""
+    print(f"[+] Checking MSF connection at {MSF_HOST}:{MSF_PORT}...")
+
+    # Start Metasploit RPC if necessary
+    start_msf_rpc()
+
+    # Wait for MSF RPC to be ready
+    for _ in range(10):  # Retry 10 times with 1s intervals
+        try:
+            msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+            print("[+] Successfully connected to Metasploit!")
+            return "[+] Connected to Metasploit!"
+        except Exception as e:
+            print(f"[!] MSF not ready yet, retrying... {e}")
+            time.sleep(1)
+
+    return "[!] Failed to connect after multiple attempts."
+
+
 
 #easy testing
 # host = "10.10.1.1"

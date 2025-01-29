@@ -37,8 +37,11 @@ Terminal 1:
 Terminal 2:
 "docker exec -it ender-service /bin/bash"
 "python ender_client/client.py"
+Enter: "connect"
 
-Enter Ip addr = "10.1.1.2"
-Enter port number = "80"
 
+Termianl 3:
+"docker exec -it operator /bin/bash"
+"msfconsole"
+"load msgrpc Pass=memes ServerPort=1337 ServerHost=10.1.1.2"
 
