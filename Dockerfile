@@ -70,11 +70,11 @@ RUN python3 -m pip install --upgrade pip setuptools && \
 FROM eshu-base AS ender
 
 # Set working directory for Ender
-WORKDIR /workspace/ender
+WORKDIR /workspace/enderCLI
 
 # Copy Ender’s source code into the container
-COPY ./src/ /workspace/ender/
-COPY ./eshu/ /workspace/ender/eshu/
+COPY ./src/ /workspace/enderCLI/
+COPY ./eshu/ /workspace/enderCLI
 
 # Set PYTHONPATH to include the Eshu module
 ENV PYTHONPATH="/workspace/ender/eshu/src:$PYTHONPATH"
