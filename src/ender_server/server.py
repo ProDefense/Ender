@@ -4,6 +4,7 @@ import threading
 import time
 from eshu.src.Eshu.c2.msf.metasploit import Metasploit
 
+global msfInstance
 # Load Metasploit config
 MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
 
@@ -62,7 +63,8 @@ def connect_msf():
     # Wait for MSF RPC to be ready
     for _ in range(10):  # Retry 10 times with 1s intervals
         try:
-            msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+            global msfInstance
+            msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
             print("[+] Successfully connected to Metasploit!")
             return "[+] Connected to Metasploit!"
         except Exception as e:
@@ -71,12 +73,6 @@ def connect_msf():
 
     return "[!] Failed to connect after multiple attempts."
 
-
-
-#easy testing
-# host = "10.10.1.1"
-# port_tester = 12345
-
 #Tracker Server Function
 #create a UDP socket
 tracker_ip = "10.2.2.4"
@@ -84,11 +80,8 @@ tracker_port = 5000
 
 tracker_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 tracker_socket.bind((tracker_ip, tracker_port))
-# tracker_socket.bind((host, port_tester))
-
 
 def handle_message():
-    
     while True:
         msg, peer_addr = tracker_socket.recvfrom(1024)
         decoded_msg = msg.decode()
@@ -99,36 +92,89 @@ def handle_message():
 
         if command == "connect":
             response = connect_msf()
-        # elif command == "query":
-        #     if options[1] == "players":
-        #         response = query_players()
-        #     elif options[1] == "games":
-        #         response = query_games()
-        # elif command == "start":
-        #     response1, game_id = start_game(options)
-        #     tracker_socket.sendto(response1.encode(), peer_addr)
-        #     play_game(game_id)
-        #     handle_message()
+            tracker_socket.sendto(response.encode(), peer_addr)
 
-        # elif command == "end":
-        #     response = end_games(options)
-        # elif command == "de-register":
-        #     response = deregister_player(options)
+        elif command == "display":
+            if options[1] == "exploits":
+                start = int(options[2]) if len(options) > 2 else 0
+                exploits, total = display_exploits(start)
+                response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
+            elif options[1] == "auxiliary":
+                start = int(options[2]) if len(options) > 2 else 0
+                auxiliaries, total = display_auxiliary_modules(start)
+                response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + "\n".join(auxiliaries)
+            else:
+                response = "Invalid display option. Use 'display exploits' or 'display auxiliary'."
+            
+            tracker_socket.sendto(response.encode(), peer_addr)
+
+        elif command == "run" and options[1] == "exploit":
+            exploit_name = options[2]
+            tracker_socket.sendto(f"Please enter parameters for {exploit_name}:".encode(), peer_addr)
+            
+            params_msg, _ = tracker_socket.recvfrom(1024)
+            params = params_msg.decode().split(' ')
+            target_ip, username, password, threads = params[0], params[1], params[2], int(params[3])
+
+            result = run_msf_exploit(exploit_name, target_ip, username, password, threads)
+            tracker_socket.sendto(f"Exploit result: {result}".encode(), peer_addr)
+
         else:
-            response =  "Please re-enter the command: "
-
-        tracker_socket.sendto(response.encode(), peer_addr)
-
+            response = "Please re-enter the command."
+            tracker_socket.sendto(response.encode(), peer_addr)
 def connect_msf():
     """Handles connection to the Metasploit RPC server."""
     print("[+] Connecting to Metasploit...")
     try:
-        msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+        global msfInstance
+        msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
         print("[+] Successfully connected to Metasploit!")
         return "[+] Connected to Metasploit!"
     except Exception as e:
         print(f"[!] Failed to connect to MSF: {e}")
         return f"[!] Failed to connect: {e}"
+    
+def display_exploits(start=0, count=20):
+    """Fetch and display exploits with pagination."""
+    exploits = msfInstance.client.modules.exploits
+    available_exploits = []
+
+    end = start + count
+    for exploit in exploits[start:end]:  # Get exploits in chunks
+        available_exploits.append(f"Exploit Module: {exploit}")
+
+    return available_exploits, len(exploits)  # Return total exploits for pagination
+
+def display_auxiliary_modules(start=0, count=20):
+    """Fetch and display auxiliary modules with pagination."""
+    auxiliary_modules = msfInstance.client.modules.auxiliary
+    available_auxiliary = []
+
+    end = start + count
+    for aux in auxiliary_modules[start:end]:  # Get auxiliary modules in chunks
+        available_auxiliary.append(f"Auxiliary Module: {aux}")
+
+    return available_auxiliary, len(auxiliary_modules)  # Return total count for pagination
+
+def run_msf_exploit(mname, target_ip, username, password, threads):
+    """Run the selected exploit with parameters."""
+    mtype = 'auxiliary'
+    exploit = msfInstance.client.modules.use(mtype, mname)
+    exploit["RHOSTS"] = target_ip
+    exploit["USERNAME"] = username
+    exploit["PASSWORD"] = password
+    exploit["THREADS"] = threads
+
+    print(f"Running exploit: {mname} on {target_ip} with {threads} threads...")
+    result = exploit.execute()
+    print("Exploit Result:", result)
+
+    if 'job_id' in result:
+        print("[+] Exploit scan started successfully.")
+    else:
+        print("[!] Scan failed.")
+        
+    return result
 
 
 
