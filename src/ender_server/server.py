@@ -1,94 +1,55 @@
 import os
+import time
 import socket
 import threading
-import time
-from eshu.src.Eshu.c2.msf.metasploit import Metasploit
+from src.Eshu.c2.msf.metasploit import Metasploit
 
-# Load Metasploit config
-MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
+# Metasploit Configurations
+MSF_HOST = "10.1.1.2"  # Operator container IP
+MSF_PORT = 1337
+MSF_PASSWORD = "memes"
 
-def load_msf_config(file_path):
-    """Load MSF configuration from a .env file with default fallbacks."""
-    config = {"MSF_HOST": "127.0.0.1", "MSF_PORT": 1337, "MSF_PASSWORD": "memes"}
-    
-    try:
-        with open(file_path, "r") as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):  # Ignore comments
-                    key, value = line.strip().split("=", 1)
-                    config[key] = value
-
-        # Ensure MSF_PORT is an integer
-        config["MSF_PORT"] = int(config.get("MSF_PORT", 1337))  # Ensures valid integer
-        
-    except FileNotFoundError:
-        print(f"[!] msf_config.env not found at {file_path}, using defaults.")
-
-    except ValueError:
-        print("[!] Invalid MSF_PORT in config, using default 1337.")
-        config["MSF_PORT"] = 1337  # Fallback if port is invalid
-
-    return config
-
-msf_config = load_msf_config(MSF_CONFIG_PATH)
-MSF_HOST = msf_config["MSF_HOST"]
-MSF_PORT = msf_config["MSF_PORT"]
-MSF_PASSWORD = msf_config["MSF_PASSWORD"]
-
-# ✅ Automatically start MSF RPC inside the operator (Eshu)
+# ✅ Auto-start Metasploit in the Operator container
 def start_msf_rpc():
-    """Send a command to start Metasploit RPC in the Eshu operator container."""
-    operator_ip = "10.1.1.2"  # Update if necessary
-
-    print(f"[+] Sending remote start command to {operator_ip}...")
+    """Start Metasploit RPC inside the operator container."""
+    print(f"[+] Starting Metasploit RPC in {MSF_HOST}...")
     try:
         ssh_command = (
-            f"ssh root@{operator_ip} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
+            f"ssh root@{MSF_HOST} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
             f"ServerPort={MSF_PORT} ServerHost=0.0.0.0; exit\"'"
         )
         os.system(ssh_command)
-        print(f"[+] MSF RPC started on {operator_ip}:{MSF_PORT}")
+        print(f"[+] MSF RPC started on {MSF_HOST}:{MSF_PORT}")
     except Exception as e:
-        print(f"[!] Failed to start MSF RPC remotely: {e}")
+        print(f"[!] Failed to start MSF RPC: {e}")
 
-# ✅ Improved Metasploit Connection
+# ✅ Keep trying to connect to MSF RPC
 def connect_msf():
-    """Handles connection to the Metasploit RPC server."""
-    print(f"[+] Checking MSF connection at {MSF_HOST}:{MSF_PORT}...")
+    """Attempt to connect to Metasploit RPC server with retries."""
+    print(f"[+] Connecting to Metasploit RPC at {MSF_HOST}:{MSF_PORT}...")
 
-    # Start Metasploit RPC if necessary
-    start_msf_rpc()
+    start_msf_rpc()  # Start MSF RPC before connecting
 
-    # Wait for MSF RPC to be ready
-    for _ in range(10):  # Retry 10 times with 1s intervals
+    for _ in range(10):  # Retry 10 times
         try:
             msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
             print("[+] Successfully connected to Metasploit!")
-            return "[+] Connected to Metasploit!"
+            return msf
         except Exception as e:
-            print(f"[!] MSF not ready yet, retrying... {e}")
-            time.sleep(1)
+            print(f"[!] Retrying MSF connection... {e}")
+            time.sleep(2)  # Wait before retrying
 
-    return "[!] Failed to connect after multiple attempts."
+    print("[!] Failed to connect to Metasploit after multiple attempts.")
+    return None
 
-
-
-#easy testing
-# host = "10.10.1.1"
-# port_tester = 12345
-
-#Tracker Server Function
-#create a UDP socket
-tracker_ip = "10.2.2.4"
+# ✅ Create UDP Tracker Server
+tracker_ip = "10.1.1.2"
 tracker_port = 5000
-
 tracker_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 tracker_socket.bind((tracker_ip, tracker_port))
-# tracker_socket.bind((host, port_tester))
-
 
 def handle_message():
-    
+    """Handles UDP messages from clients."""
     while True:
         msg, peer_addr = tracker_socket.recvfrom(1024)
         decoded_msg = msg.decode()
@@ -98,46 +59,20 @@ def handle_message():
         command = options[0]
 
         if command == "connect":
-            response = connect_msf()
-        # elif command == "query":
-        #     if options[1] == "players":
-        #         response = query_players()
-        #     elif options[1] == "games":
-        #         response = query_games()
-        # elif command == "start":
-        #     response1, game_id = start_game(options)
-        #     tracker_socket.sendto(response1.encode(), peer_addr)
-        #     play_game(game_id)
-        #     handle_message()
-
-        # elif command == "end":
-        #     response = end_games(options)
-        # elif command == "de-register":
-        #     response = deregister_player(options)
+            response = "[+] Connecting to MSF..."
+            msf_client = connect_msf()
+            if msf_client:
+                response = "[+] Connected to Metasploit!"
         else:
-            response =  "Please re-enter the command: "
+            response = "Invalid command."
 
         tracker_socket.sendto(response.encode(), peer_addr)
 
-def connect_msf():
-    """Handles connection to the Metasploit RPC server."""
-    print("[+] Connecting to Metasploit...")
-    try:
-        msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-        print("[+] Successfully connected to Metasploit!")
-        return "[+] Connected to Metasploit!"
-    except Exception as e:
-        print(f"[!] Failed to connect to MSF: {e}")
-        return f"[!] Failed to connect: {e}"
-
-
-
 def main():
-    receive_thread = threading.Thread(target = handle_message)
+    receive_thread = threading.Thread(target=handle_message)
     receive_thread.start()
     receive_thread.join()
     tracker_socket.close()
 
 if __name__ == "__main__":
     main()
-

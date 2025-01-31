@@ -1,5 +1,3 @@
-# version: '3.9'
-
 services:
 
 # ----- OPERATOR (CLIENT) MACHINE -----
@@ -26,32 +24,39 @@ services:
   #    - DATABASE_URL=
     volumes:
       - ./eshu/src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
-      - ./eshu/operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit    
+  #   - ./operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit    
     networks:
       localnet:
         ipv4_address: 10.1.1.2
-      servernet:
-        ipv4_address: 10.1.2.5
-      clientnet:
-        ipv4_address: 10.1.2.4
+
+  # ----- SERVER MACHINES -----
+  server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: server
+    hostname: server
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./eshu/src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.4
 
 
-# # ----- ENDER SERVICE -----
-#   ender:
-#     build:
-#       context: ./eshu
-#       dockerfile: Dockerfile
-#     container_name: ender-server
-#     hostname: ender-server
-#     stdin_open: true
-#     tty: true
-#     ports:
-#       - "5000:5000" # Example Ender-specific service port
-#     environment:
-#       - EXAMPLE_VAR=value
-#     networks:
-#       localnet:
-#         ipv4_address: 10.1.1.4
+  # ----- CLIENT MACHINES -----
+  client:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: ender_client
+    hostname: ender_client
+    stdin_open: true
+    tty: true
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.5
 
 
   # ----- VICTIM MACHINES -----
