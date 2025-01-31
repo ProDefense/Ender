@@ -31,17 +31,12 @@ Testing the connectivity between server and metasploit
 
 To try out CLI
 Terminal 1:
-"docker exec -it ender-service /bin/bash"
+"docker exec -it operator /bin/bash"
 "python ender_server/server.py"
 
 Terminal 2:
-"docker exec -it ender-service /bin/bash"
+"docker exec -it ender-client /bin/bash"
 "python ender_client/client.py"
 Enter: "connect"
 
-
-Termianl 3:
-"docker exec -it operator /bin/bash"
-"msfconsole"
-"load msgrpc Pass=memes ServerPort=1337 ServerHost=10.1.1.2"
 
