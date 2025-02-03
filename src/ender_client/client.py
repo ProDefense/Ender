@@ -4,14 +4,11 @@ import threading
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 name = input("Your name: ")
-tracker_ip = "10.1.1.2"  # Server's IP
-tracker_port = 5000  # Server's port
+server_ip = "10.1.1.2"  # Server's IP
+server_port = 5000  # Server's port
 
-target_ip = "10.1.1.5"  # Target for attacks
-target_port = 80
-
-# ✅ REMOVE connect() → Not needed for UDP
-# client_socket.connect((target_ip , target_port))  ❌ REMOVE THIS
+client_ip = "10.1.1.5"  # Target for attacks
+client_port = 80
 
 def handle_receive():
     """Receive messages from the server."""
@@ -31,7 +28,7 @@ def handle_send():
             if message.lower() == 'exit':
                 print("Exiting...")
                 break
-            client_socket.sendto(message.encode(), (tracker_ip, tracker_port))
+            client_socket.sendto(message.encode(), (server_ip, server_port))
         except Exception as e:
             print(f"Error sending message: {e}")
             break

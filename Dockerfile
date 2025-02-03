@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev libpq-dev libyaml-dev \
     libxml2-dev libxslt1-dev \
     mingw-w64 binutils-mingw-w64 g++-mingw-w64 mingw-w64-tools gcc-mingw-w64 \
-    libcurl4-openssl-dev libgmp-dev sudo libffi-dev && \
+    libcurl4-openssl-dev libgmp-dev sudo libffi-dev \
+    docker.io && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -66,6 +67,11 @@ COPY ./eshu/src/pyproject.toml /workspace/eshuCLP/
 RUN python3 -m pip install --upgrade pip setuptools && \
     pip install .
 
+
+#start docker services
+# RUN service docker start
+
+
 # Stage 2: Ender-Specific Layer
 FROM eshu-base AS ender
 
@@ -74,7 +80,11 @@ WORKDIR /workspace/enderCLI
 
 # Copy Ender’s source code into the container
 COPY ./src/ /workspace/enderCLI/
-COPY ./eshu/ /workspace/enderCLI
+COPY ./eshu/ /workspace/enderCLI/
+
+# Copy startup script into the container
+COPY start.sh /workspace/enderCLI/start.sh
+RUN chmod +x /workspace/enderCLI/start.sh
 
 # Set PYTHONPATH to include the Eshu module
 ENV PYTHONPATH="/workspace/ender/eshu/src:$PYTHONPATH"
@@ -82,5 +92,10 @@ ENV PYTHONPATH="/workspace/ender/eshu/src:$PYTHONPATH"
 # Expose Ender-specific ports
 EXPOSE 1337 8081
 
+#start the start.sh script
+# CMD ["/bin/bash", "-c", "/workspace/enderCLI/start.sh"]
+
 # Set entrypoint for debugging and interactive use
 ENTRYPOINT ["/bin/bash", "-i"]
+
+

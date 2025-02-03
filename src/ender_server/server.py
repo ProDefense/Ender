@@ -43,15 +43,15 @@ def connect_msf():
     return None
 
 # ✅ Create UDP Tracker Server
-tracker_ip = "10.1.1.2"
-tracker_port = 5000
-tracker_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-tracker_socket.bind((tracker_ip, tracker_port))
+server_ip = "10.1.1.2"
+server_port = 5000
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_socket.bind((server_ip, server_port))
 
 def handle_message():
     """Handles UDP messages from clients."""
     while True:
-        msg, peer_addr = tracker_socket.recvfrom(1024)
+        msg, peer_addr = server_socket.recvfrom(1024)
         decoded_msg = msg.decode()
         print(f"Received from {peer_addr}: {decoded_msg}")
 
@@ -66,13 +66,13 @@ def handle_message():
         else:
             response = "Invalid command."
 
-        tracker_socket.sendto(response.encode(), peer_addr)
+        server_socket.sendto(response.encode(), peer_addr)
 
 def main():
     receive_thread = threading.Thread(target=handle_message)
     receive_thread.start()
     receive_thread.join()
-    tracker_socket.close()
+    server_socket.close()
 
 if __name__ == "__main__":
     main()
