@@ -37,41 +37,41 @@ MSF_PORT = msf_config["MSF_PORT"]
 MSF_PASSWORD = msf_config["MSF_PASSWORD"]
 
 # ✅ Automatically start MSF RPC inside the operator (Eshu)
-def start_msf_rpc():
-    """Send a command to start Metasploit RPC in the Eshu operator container."""
-    operator_ip = "10.1.1.2"  # Update if necessary
-
-    print(f"[+] Sending remote start command to {operator_ip}...")
-    try:
-        ssh_command = (
-            f"ssh root@{operator_ip} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
-            f"ServerPort={MSF_PORT} ServerHost=0.0.0.0; exit\"'"
-        )
-        os.system(ssh_command)
-        print(f"[+] MSF RPC started on {operator_ip}:{MSF_PORT}")
-    except Exception as e:
-        print(f"[!] Failed to start MSF RPC remotely: {e}")
-
-# ✅ Improved Metasploit Connection
-def connect_msf():
-    """Handles connection to the Metasploit RPC server."""
-    print(f"[+] Checking MSF connection at {MSF_HOST}:{MSF_PORT}...")
-
-    # Start Metasploit RPC if necessary
-    start_msf_rpc()
-
-    # Wait for MSF RPC to be ready
-    for _ in range(10):  # Retry 10 times with 1s intervals
-        try:
-            global msfInstance
-            msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-            print("[+] Successfully connected to Metasploit!")
-            return "[+] Connected to Metasploit!"
-        except Exception as e:
-            print(f"[!] MSF not ready yet, retrying... {e}")
-            time.sleep(1)
-
-    return "[!] Failed to connect after multiple attempts."
+#def start_msf_rpc():
+#    """Send a command to start Metasploit RPC in the Eshu operator container."""
+#    operator_ip = "10.1.1.2"  # Update if necessary
+#
+#    print(f"[+] Sending remote start command to {operator_ip}...")
+#    try:
+#        ssh_command = (
+#            f"ssh root@{operator_ip} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
+#            f"ServerPort={MSF_PORT} ServerHost=0.0.0.0; exit\"'"
+#        )
+#        os.system(ssh_command)
+#        print(f"[+] MSF RPC started on {operator_ip}:{MSF_PORT}")
+#    except Exception as e:
+#        print(f"[!] Failed to start MSF RPC remotely: {e}")
+#
+## ✅ Improved Metasploit Connection
+#def connect_msf():
+#    """Handles connection to the Metasploit RPC server."""
+#    print(f"[+] Checking MSF connection at {MSF_HOST}:{MSF_PORT}...")
+#
+#    # Start Metasploit RPC if necessary
+#    start_msf_rpc()
+#
+#    # Wait for MSF RPC to be ready
+#    for _ in range(10):  # Retry 10 times with 1s intervals
+#        try:
+#            global msfInstance
+#            msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+#            print("[+] Successfully connected to Metasploit!")
+#            return "[+] Connected to Metasploit!"
+#        except Exception as e:
+#            print(f"[!] MSF not ready yet, retrying... {e}")
+#            time.sleep(1)
+#
+#    return "[!] Failed to connect after multiple attempts."
 
 #Tracker Server Function
 #create a UDP socket
@@ -94,6 +94,10 @@ def handle_message():
             response = connect_msf()
             tracker_socket.sendto(response.encode(), peer_addr)
 
+        elif command == "exit":
+            print("Closing Ender...")
+            break
+
         elif command == "display":
             if options[1] == "exploits":
                 start = int(options[2]) if len(options) > 2 else 0
@@ -109,54 +113,64 @@ def handle_message():
             tracker_socket.sendto(response.encode(), peer_addr)
 
         elif command == "search":
-            if options[1] == "exploits":
-                keyword = options[2] if len(options) > 3 else ""
-                exploits = search_exploits(keyword)
-                response = f"Search results for '{keyword}':\n" + "\n".join(exploits) if exploits else "No exploits found."
-            elif options[1] == "auxiliary":
-                keyword = options[2] if len(options) > 3 else ""
-                auxiliaries = search_auxiliary_modules(keyword)
-                response = f"Search results for '{keyword}':\n" + "\n".join(auxiliaries) if auxiliaries else "No auxiliary modules found."
+            if len(options) < 3:
+                response = "Invalid search command: search {exploits or auxiliary} {module keyword1/keyword2} {index}"
             else:
-                response = "Invalid search command: search {exploits or auxiliary} {module keyword1/keyword2}"
+                module_type = options[1]
+                keyword = options[2]
+                start = int(options[3]) if len(options) > 3 else 0  # Default start index
+
+                if module_type == "exploits":
+                    results, total = search_exploits(keyword, start)
+                elif module_type == "auxiliary":
+                    results, total = search_auxiliary_modules(keyword, start)
+                else:
+                    response = "Invalid module type. Use 'search exploits' or 'search auxiliary'."
+                    tracker_socket.sendto(response.encode(), peer_addr)
+                    #continue
+                
+                response = f"Search results for '{keyword}' ({start}-{start+20} of {total}):\n" + "\n".join(results) if results else "No matches found."
+
             tracker_socket.sendto(response.encode(), peer_addr)
 
         elif command == "run" and options[1] == "exploit":
-            exploit_name = options[2]
-            tracker_socket.sendto(f"Please enter parameters for {exploit_name}:".encode(), peer_addr)
-            
-            params_msg, _ = tracker_socket.recvfrom(1024)
-            params = params_msg.decode().split(' ')
-            target_ip, username, password, threads = params[0], params[1], params[2], int(params[3])
+            if len(options) != 3:
+                response = "Invalid run command: run exploit {chosen module}"
+                tracker_socket.sendto(response.encode(), peer_addr)
+            else:
+                exploit_name = options[2]
+                tracker_socket.sendto(f"Please enter parameters for {exploit_name}:".encode(), peer_addr)
 
-            result = run_msf_exploit(exploit_name, target_ip, username, password, threads)
-            tracker_socket.sendto(f"Exploit result: {result}".encode(), peer_addr)
+                params_msg, _ = tracker_socket.recvfrom(1024)
+                params = params_msg.decode().split(' ')
+                target_ip, username, password, threads = params[0], params[1], params[2], int(params[3])
+
+                result = run_msf_exploit(exploit_name, target_ip, username, password, threads)
+                tracker_socket.sendto(f"Exploit result: {result}".encode(), peer_addr)
 
         else:
             response = "Please re-enter the command."
             tracker_socket.sendto(response.encode(), peer_addr)
 
-def search_exploits(keyword):
-    """Search for exploits containing the given keyword."""
-    exploits = msfInstance.client.modules.exploits
-    return [exploit for exploit in exploits if keyword.lower() in exploit.lower()]
+def search_exploits(keyword, start=0, count=20):
+    """Search for exploits containing the given keyword with pagination."""
+    exploits = [exploit for exploit in msfInstance.client.modules.exploits if keyword.lower() in exploit.lower()]
+    
+    total = len(exploits)
+    end = start + count
+    paginated_exploits = exploits[start:end]
 
-def search_auxiliary_modules(keyword):
-    """Search for auxiliary modules containing the given keyword."""
-    auxiliary_modules = msfInstance.client.modules.auxiliary
-    return [aux for aux in auxiliary_modules if keyword.lower() in aux.lower()]
+    return paginated_exploits, total  # Return total count for pagination
 
-def connect_msf():
-    """Handles connection to the Metasploit RPC server."""
-    print("[+] Connecting to Metasploit...")
-    try:
-        global msfInstance
-        msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-        print("[+] Successfully connected to Metasploit!")
-        return "[+] Connected to Metasploit!"
-    except Exception as e:
-        print(f"[!] Failed to connect to MSF: {e}")
-        return f"[!] Failed to connect: {e}"
+def search_auxiliary_modules(keyword, start=0, count=20):
+    """Search for auxiliary modules containing the given keyword with pagination."""
+    auxiliary_modules = [aux for aux in msfInstance.client.modules.auxiliary if keyword.lower() in aux.lower()]
+
+    total = len(auxiliary_modules)
+    end = start + count
+    paginated_auxiliary = auxiliary_modules[start:end]
+
+    return paginated_auxiliary, total  # Return total count for pagination
     
 def display_exploits(start=0, count=20):
     """Fetch and display exploits with pagination."""
@@ -200,7 +214,17 @@ def run_msf_exploit(mname, target_ip, username, password, threads):
         
     return result
 
-
+def connect_msf():
+    """Handles connection to the Metasploit RPC server."""
+    print("[+] Connecting to Metasploit...")
+    try:
+        global msfInstance
+        msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+        print("[+] Successfully connected to Metasploit!")
+        return "[+] Connected to Metasploit!"
+    except Exception as e:
+        print(f"[!] Failed to connect to MSF: {e}")
+        return f"[!] Failed to connect: {e}"
 
 def main():
     receive_thread = threading.Thread(target = handle_message)
