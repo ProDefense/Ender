@@ -96,26 +96,29 @@ def handle_message():
 
         elif command == "display":
             if options[1] == "exploits":
-                if len(options) > 2 and options[2] == "search":
-                    keyword = options[3] if len(options) > 3 else ""
-                    exploits = search_exploits(keyword)
-                    response = f"Search results for '{keyword}':\n" + "\n".join(exploits) if exploits else "No exploits found." 
-                else:
-                    start = int(options[2]) if len(options) > 2 else 0
-                    exploits, total = display_exploits(start)
-                    response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
+                start = int(options[2]) if len(options) > 2 else 0
+                exploits, total = display_exploits(start)
+                response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
             elif options[1] == "auxiliary":
-                if len(options) > 2 and options[2] == "search":
-                    keyword = options[3] if len(options) > 3 else ""
-                    auxiliaries = search_auxiliary_modules(keyword)
-                    response = f"Search results for '{keyword}':\n" + "\n".join(auxiliaries) if auxiliaries else "No auxiliary modules found."
-                else:
-                    start = int(options[2]) if len(options) > 2 else 0
-                    auxiliaries, total = display_auxiliary_modules(start)
-                    response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + f"\n".join(auxiliaries)
+                start = int(options[2]) if len(options) > 2 else 0
+                auxiliaries, total = display_auxiliary_modules(start)
+                response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + f"\n".join(auxiliaries)
             else:
                 response = "Invalid display option. Use 'display exploits' or 'display auxiliary'."
             
+            tracker_socket.sendto(response.encode(), peer_addr)
+
+        elif command == "search":
+            if options[1] == "exploits":
+                keyword = options[2] if len(options) > 3 else ""
+                exploits = search_exploits(keyword)
+                response = f"Search results for '{keyword}':\n" + "\n".join(exploits) if exploits else "No exploits found."
+            elif options[1] == "auxiliary":
+                keyword = options[2] if len(options) > 3 else ""
+                auxiliaries = search_auxiliary_modules(keyword)
+                response = f"Search results for '{keyword}':\n" + "\n".join(auxiliaries) if auxiliaries else "No auxiliary modules found."
+            else:
+                response = "Invalid search command: search {exploits or auxiliary} {module keyword1/keyword2}"
             tracker_socket.sendto(response.encode(), peer_addr)
 
         elif command == "run" and options[1] == "exploit":

@@ -58,7 +58,7 @@ def handle_send():
             elif message.lower() == 'connect':
                 client_socket.sendto(message.encode(), (tracker_ip, tracker_port))
             
-            elif message.lower().startswith('display exploits') and 'search' not in message:
+            elif message.lower().startswith('display exploits'):
                 parts = message.split()
                 if len(parts) == 3 and parts[2].isdigit():
                     start_index_exploits = int(parts[2])  # If user provides a number, use it
@@ -67,7 +67,7 @@ def handle_send():
 
                 client_socket.sendto(f"display exploits {start_index_exploits}".encode(), (tracker_ip, tracker_port))
 
-            elif message.lower().startswith('display auxiliary') and 'search' not in message:
+            elif message.lower().startswith('display auxiliary'):
                 parts = message.split()
                 if len(parts) == 3 and parts[2].isdigit():
                     start_index_auxiliary = int(parts[2])  # If user provides a number, use it
@@ -76,7 +76,7 @@ def handle_send():
 
                 client_socket.sendto(f"display auxiliary {start_index_auxiliary}".encode(), (tracker_ip, tracker_port))
 
-            elif 'search' in message:
+            elif message.lower().startswith('search auxiliary') or message.lower().startswith('search exploits'):
                 client_socket.sendto(message.encode(), (tracker_ip, tracker_port))
                 
             elif message.lower() == 'next exploits':
