@@ -96,13 +96,23 @@ def handle_message():
 
         elif command == "display":
             if options[1] == "exploits":
-                start = int(options[2]) if len(options) > 2 else 0
-                exploits, total = display_exploits(start)
-                response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
+                if len(options) > 2 and options[2] == "search":
+                    keyword = options[3] if len(options) > 3 else ""
+                    exploits = search_exploits(keyword)
+                    response = f"Search results for '{keyword}':\n" + "\n".join(exploits) if exploits else "No exploits found." 
+                else:
+                    start = int(options[2]) if len(options) > 2 else 0
+                    exploits, total = display_exploits(start)
+                    response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
             elif options[1] == "auxiliary":
-                start = int(options[2]) if len(options) > 2 else 0
-                auxiliaries, total = display_auxiliary_modules(start)
-                response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + "\n".join(auxiliaries)
+                if len(options) > 2 and options[2] == "search":
+                    keyword = options[3] if len(options) > 3 else ""
+                    auxiliaries = search_auxiliary_modules(keyword)
+                    response = f"Search results for '{keyword}':\n" + "\n".join(auxiliaries) if auxiliaries else "No auxiliary modules found."
+                else:
+                    start = int(options[2]) if len(options) > 2 else 0
+                    auxiliaries, total = display_auxiliary_modules(start)
+                    response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + f"\n".join(auxiliaries)
             else:
                 response = "Invalid display option. Use 'display exploits' or 'display auxiliary'."
             
@@ -122,6 +132,17 @@ def handle_message():
         else:
             response = "Please re-enter the command."
             tracker_socket.sendto(response.encode(), peer_addr)
+
+def search_exploits(keyword):
+    """Search for exploits containing the given keyword."""
+    exploits = msfInstance.client.modules.exploits
+    return [exploit for exploit in exploits if keyword.lower() in exploit.lower()]
+
+def search_auxiliary_modules(keyword):
+    """Search for auxiliary modules containing the given keyword."""
+    auxiliary_modules = msfInstance.client.modules.auxiliary
+    return [aux for aux in auxiliary_modules if keyword.lower() in aux.lower()]
+
 def connect_msf():
     """Handles connection to the Metasploit RPC server."""
     print("[+] Connecting to Metasploit...")
