@@ -32,7 +32,7 @@ Enter: "next exploits", "prev exploits", "next auxiliary", or "prev auxiliary" t
 Enter: "run exploit scanner/ssh/ssh_login"
 ***IMPORTANT*** To enter Parameters, you need to enter in order to bring up the prompts
 Enter:
-    '10.1.1.3/24' for RHOSTS
+    '10.1.1.3' for RHOSTS
     'msfadmin' for USERNAME
     'msfadmin' for PASSWORD
     5 for THREADS

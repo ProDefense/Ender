@@ -37,8 +37,10 @@ def handle_receive():
 
             else:
                 # Handle other messages from the server
-                print(f"Received: {decoded_msg}")
-
+                #print(f"Received: {decoded_msg}")
+                if not decoded_msg:
+                    print("Handle_Receive Failed")
+                
         except Exception as e:
             print(f"Error receiving message: {e}")
             break
@@ -53,6 +55,7 @@ def handle_send():
             message = input(f"{name}: ")
             if message.lower() == 'exit':
                 print("Exiting...")
+                client_socket.sendto(message.lower().encode(), (tracker_ip, tracker_port))
                 break
             
             elif message.lower() == 'connect':
@@ -64,7 +67,6 @@ def handle_send():
                     start_index_exploits = int(parts[2])  # If user provides a number, use it
                 else:
                     start_index_exploits = 0  # Default to first page
-
                 client_socket.sendto(f"display exploits {start_index_exploits}".encode(), (tracker_ip, tracker_port))
 
             elif message.lower().startswith('display auxiliary'):
@@ -73,9 +75,11 @@ def handle_send():
                     start_index_auxiliary = int(parts[2])  # If user provides a number, use it
                 else:
                     start_index_auxiliary = 0  # Default to first page
-
                 client_socket.sendto(f"display auxiliary {start_index_auxiliary}".encode(), (tracker_ip, tracker_port))
 
+            elif message.lower().startswith('search auxiliary') or message.lower().startswith('search exploits'):
+                client_socket.sendto(message.encode(), (tracker_ip, tracker_port))
+                
             elif message.lower() == 'next exploits':
                 start_index_exploits += 20  # Increase pagination index for exploits
                 client_socket.sendto(f"display exploits {start_index_exploits}".encode(), (tracker_ip, tracker_port))
@@ -93,8 +97,8 @@ def handle_send():
                 client_socket.sendto(f"display auxiliary {start_index_auxiliary}".encode(), (tracker_ip, tracker_port))
 
             elif message.lower().startswith('run exploit'):
-                exploit_name = message.split(' ')[2]  # Extract exploit name
-                client_socket.sendto(f"run exploit {exploit_name}".encode(), (tracker_ip, tracker_port))
+                #exploit_name = message.split(' ')[2]  # Extract exploit name
+                client_socket.sendto(message.encode(), (tracker_ip, tracker_port))
 
         except Exception as e:
             print(f"Error sending message: {e}")
