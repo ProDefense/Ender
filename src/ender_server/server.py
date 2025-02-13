@@ -89,30 +89,57 @@ def search_auxiliary_modules(keyword, start=0, count=20):
 #####################
 # Run MSF module
 #####################
+
+def parse_param_value(opt_data, user_input):
+    """
+    Convert 'user_input' (string) to the correct type based on 'opt_data'.
+    If the default or 'type' is bool, parse user_input -> boolean.
+    If integer, parse user_input -> int.
+    Otherwise, keep as string.
+    """
+    msf_type = opt_data.get('type', '').lower()  # e.g. "bool", "string", "port", ...
+    default_val = opt_data.get('default', None)
+
+    user_input = user_input.strip()
+    if not user_input:
+        return None  # signal "skip" so we rely on Metasploit’s default
+
+    # If user typed "true"/"false", we can parse it
+    if msf_type == 'bool' or isinstance(default_val, bool):
+        return (user_input.lower() == 'true')
+    elif msf_type == 'integer' or isinstance(default_val, int):
+        return int(user_input)
+    elif msf_type == 'port':
+        return int(user_input)
+    # If you want to handle 'float' or 'double' similarly, do so here
+
+    # Otherwise, treat as string
+    return user_input
+
 def run_msf_module(module_type, module_name, user_params):
-    """
-    Run a Metasploit module with user-supplied parameters.
-    :param module_type: 'exploit' or 'auxiliary'
-    :param module_name: The module name, e.g. 'scanner/ssh/ssh_login'
-    :param user_params: Dictionary of parameter_name -> user_value
-    """
     exploit = msfInstance.client.modules.use(module_type, module_name)
     if not exploit:
         return f"[!] Could not load {module_type} module: {module_name}"
 
+    info = exploit._info.get('options', {})
     print(f"[+] Loaded {module_type}/{module_name}. Setting user parameters...")
 
-    # Set user-supplied parameters
     for param_key, param_value in user_params.items():
-        # If user left param_value blank but the module has a default, we could skip or use default
-        if param_value.strip() == "" and param_key in exploit.options:
-            continue
-        exploit[param_key] = param_value
+        # param_value is the string typed in the client
+        # look up the official msf opt_data
+        opt_data = info.get(param_key, {})
+        typed_val = parse_param_value(opt_data, str(param_value))
 
-    # Execute the module
+        # If typed_val is None => user typed nothing => skip
+        if typed_val is None:
+            continue
+
+        exploit[param_key] = typed_val
+
     result = exploit.execute()
     print("[+] Module execute() called. Result =>", result)
     return json.dumps(result)
+
 
 #####################
 # Validate Module 
@@ -222,11 +249,6 @@ def handle_message():
             tracker_socket.sendto(response.encode(), peer_addr)
 
         elif command == "run":
-            """
-            Usage:
-              run exploit <module_name>
-              run auxiliary <module_name>
-            """
             if len(options) < 3:
                 response = (
                     "Invalid run command.\n"
@@ -238,44 +260,58 @@ def handle_message():
             module_type = options[1].lower()  # 'exploit' or 'auxiliary'
             module_name = options[2]
 
-            # (Optional) Validate that the module_name is correct for the given module_type
+            # 1) Validate or skip
             valid_ok, err_msg = validate_module_type(module_type, module_name)
             if not valid_ok:
                 tracker_socket.sendto(err_msg.encode(), peer_addr)
                 continue
 
-            # Load the module to inspect its options
+            # 2) Create exploit object
             exploit = msfInstance.client.modules.use(module_type, module_name)
             if not exploit:
                 error_msg = f"[!] Could not load {module_type} module: {module_name}"
                 tracker_socket.sendto(error_msg.encode(), peer_addr)
                 continue
 
-            # Build a structure describing each parameter
-            module_options = []
-            for opt_name, opt_data in exploit.options.items():
-                # opt_data typically has keys like 'required', 'default', 'desc'
-                required_flag = opt_data.get('required', False)
-                default_val   = opt_data.get('default', "")
-                desc_val      = opt_data.get('desc', "")
-                module_options.append({
-                    'name': opt_name,
-                    'required': required_flag,
-                    'default': default_val,
-                    'desc': desc_val
-                })
+            # 2a) Hard-code any required booleans or default values you don't want to prompt for:
+            # For example:
+            # exploit['STOP_ON_SUCCESS'] = False
+            # exploit['VERBOSE'] = True
+            # ... etc. 
+            # (Skip if the module's default is already acceptable.)
 
-            # Convert to JSON so the client can parse
+            exploit_info = exploit._info
+            if 'options' in exploit_info and isinstance(exploit_info['options'], dict):
+                options_dict = exploit_info['options']
+            else:
+                options_dict = {}
+
+            ALWAYS_PROMPT_OPTS = {"RHOSTS", "USERNAME", "PASSWORD", "THREADS", "RPORT"}
+
+            # 3) Build prompt list for just these 5
+            module_options = []
+            for opt_name, opt_data in options_dict.items():
+                if opt_name in ALWAYS_PROMPT_OPTS:
+                    default_val = opt_data.get('default', "")
+                    desc_val    = opt_data.get('desc', "")
+                    # We'll keep 'required' = False so it doesn't say "required" in the prompt
+                    module_options.append({
+                        'name': opt_name,
+                        'required': False,
+                        'default': default_val,
+                        'desc': desc_val
+                    })
+
+            # 4) Send the JSON request to the client
             param_request = {
                 'action': 'PARAMS_REQUEST',
                 'module_type': module_type,
                 'module_name': module_name,
                 'options': module_options
             }
-            param_request_str = json.dumps(param_request)
-            tracker_socket.sendto(param_request_str.encode(), peer_addr)
+            tracker_socket.sendto(json.dumps(param_request).encode(), peer_addr)
 
-            # Now wait for the user-supplied params
+            # 5) Wait for user responses
             user_param_msg, _ = tracker_socket.recvfrom(65535)
             try:
                 user_params = json.loads(user_param_msg.decode())
@@ -284,13 +320,10 @@ def handle_message():
                 tracker_socket.sendto(response.encode(), peer_addr)
                 continue
 
-            # Run the module
+            # 6) Run module with user-supplied parameters
             result = run_msf_module(module_type, module_name, user_params)
             tracker_socket.sendto(f"Exploit result: {result}".encode(), peer_addr)
 
-        else:
-            response = "Please re-enter the command."
-            tracker_socket.sendto(response.encode(), peer_addr)
 
 def main():
     receive_thread = threading.Thread(target=handle_message)
