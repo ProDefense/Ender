@@ -2,6 +2,7 @@ import os
 import time
 import socket
 import threading
+from socket_threading import Server
 from src.Eshu.c2.msf.metasploit import Metasploit
 
 # Metasploit Configurations
@@ -23,56 +24,54 @@ def start_msf_rpc():
     except Exception as e:
         print(f"[!] Failed to start MSF RPC: {e}")
 
-# ✅ Keep trying to connect to MSF RPC
 def connect_msf():
-    """Attempt to connect to Metasploit RPC server with retries."""
+    """Attempt to connect to Metasploit RPC server with retries until success."""
     print(f"[+] Connecting to Metasploit RPC at {MSF_HOST}:{MSF_PORT}...")
 
     start_msf_rpc()  # Start MSF RPC before connecting
 
-    for _ in range(10):  # Retry 10 times
+    while True:  # Retry indefinitely
         try:
             msf = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
             print("[+] Successfully connected to Metasploit!")
             return msf
         except Exception as e:
             print(f"[!] Retrying MSF connection... {e}")
-            time.sleep(2)  # Wait before retrying
-
-    print("[!] Failed to connect to Metasploit after multiple attempts.")
-    return None
-
+            time.sleep(2)  # Wait 2 seconds before retrying (adjust as needed)
+            
 # ✅ Create UDP Tracker Server
-server_ip = "10.1.1.2"
-server_port = 5000
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_socket.bind((server_ip, server_port))
+# server_ip = "10.1.1.2"
+# server_port = 5000
+# server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+# server_socket.bind((server_ip, server_port))
 
-def handle_message():
-    """Handles UDP messages from clients."""
-    while True:
-        msg, peer_addr = server_socket.recvfrom(1024)
-        decoded_msg = msg.decode()
-        print(f"Received from {peer_addr}: {decoded_msg}")
+def handle_message(data, client_address):
+    """Handle messages from clients."""
+    print(f"[Server] Processing message: '{data}' from {client_address}")
+    options = data.split()
+    command = options[0] if options else ""
 
-        options = decoded_msg.split()
-        command = options[0]
+    if command == "connect":
+        response = "[+] Connecting to MSF..."
+        msf_client = connect_msf()
+        response = "[+] Connected to Metasploit!" if msf_client else "[-] Failed to connect to Metasploit"
+    else:
+        response = "Invalid command."
 
-        if command == "connect":
-            response = "[+] Connecting to MSF..."
-            msf_client = connect_msf()
-            if msf_client:
-                response = "[+] Connected to Metasploit!"
-        else:
-            response = "Invalid command."
-
-        server_socket.sendto(response.encode(), peer_addr)
+    print(f"[Server] Sending response to {client_address}: {response}")
+    return response
 
 def main():
-    receive_thread = threading.Thread(target=handle_message)
-    receive_thread.start()
-    receive_thread.join()
-    server_socket.close()
+    # Create and start the server
+    server = Server(host='10.1.1.2', port=1337, message_handler=handle_message)  # Customize host/port as needed
+    server.start()
+
+    # Keep the server running until interrupted
+    try:
+        while True:
+            pass
+    except KeyboardInterrupt:
+        server.exit()
 
 if __name__ == "__main__":
     main()
