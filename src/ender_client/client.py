@@ -46,7 +46,7 @@ from socket_threading import Client
 
 def main():
     # Create and connect the client
-    client = Client(host='10.1.1.2', port=1337)  # Customize host/port as needed
+    client = Client(host='10.1.1.2', port= 4444)  # Customize host/port as needed
     client.connect()
 
     # Simple CLI to send messages
