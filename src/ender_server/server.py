@@ -77,13 +77,15 @@ def handle_message(data, client_address):
     # Static variable to track search state per client
     if not hasattr(handle_message, 'search_state'):
         handle_message.search_state = {}
-    client_state = handle_message.search_state.setdefault(client_address, {'keyword': None, 'start': 0, 'in_search': False})
+    client_state = handle_message.search_state.setdefault(client_address, 
+                                                          {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None})
 
     if command == "connect":
         response = f"{BLUE}[+] Connecting to MSF...{RESET}"
         msfInstance = connect_msf()
         response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
         client_state['in_search'] = False  # Reset search state on connect
+        client_state['in_run'] = False
     
     elif command == "search":
         if len(options) < 3:
@@ -99,6 +101,7 @@ def handle_message(data, client_address):
                 client_state['keyword'] = keyword
                 client_state['start'] = start
                 client_state['in_search'] = True
+                client_state['in_run'] = False
                 results, total = search_exploit(keyword, start)
                 if keyword:
                     response = f"{BLUE}Exploit modules matching '{keyword}' ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No exploit modules found for '{keyword}'.{RESET}"

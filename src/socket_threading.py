@@ -67,7 +67,6 @@ class Client:
         receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
         receive_thread.start()
 
-
     def receive_messages(self):
         while self.running:
             try:
