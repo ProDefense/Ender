@@ -21,35 +21,10 @@ services:
       - RPCPORT=1337
     volumes:
       - ./eshu/src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
-      # - ./eshu/src:/workspace/enderCLI          
-      # - ./src:/workspace/enderCLI
-      # - ./docker-compose.yml:/workspace/enderCLI/docker-compose.yml
     networks:
       localnet:
         ipv4_address: 10.1.1.2
 
-  # ----- ENDER EXPLOIT ENGINE -----
-  # ender:
-  #   build:
-  #     context: .
-  #     dockerfile: ender/Dockerfile
-  #   container_name: ender
-  #   hostname: ender
-  #   depends_on:
-  #     - operator  # Ensures operator builds first
-  #   stdin_open: true
-  #   tty: true
-  #   ports:
-  #     - "9000:9000"  # Adjust as needed
-  #   volumes:
-  #     - ./ender:/workspace/ender
-  #     - ./eshu/src:/workspace/eshuCLP
-  #   environment:
-  #     - RPCPASS=memes
-  #     - RPCPORT=1337
-  #   networks:
-  #     localnet:
-  #       ipv4_address: 10.1.1.4
 
   # ----- VICTIM MACHINES -----
   metasploitable2:
