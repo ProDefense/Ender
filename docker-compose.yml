@@ -1,11 +1,10 @@
-version: '3.8'
 services:
   # ----- OPERATOR (CLIENT) MACHINE -----
   operator:
     build:
       context: .
       dockerfile: Dockerfile
-    image: eshu:latest  # Explicitly tag the built image
+    image: ender  # Explicitly tag the built image
     container_name: operator
     hostname: operator
     stdin_open: true

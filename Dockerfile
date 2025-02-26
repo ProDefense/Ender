@@ -1,5 +1,26 @@
 # Stage 2: Ender-Specific Layer
-FROM eshu:latest
+FROM ubuntu:22.04 AS ender
+
+# Set the non-interactive mode for apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update package lists and install necessary packages
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip vim nano curl wget bash nmap netcat \
+    hydra ruby ruby-dev build-essential iproute2 net-tools\
+    openssl libreadline-dev zlib1g-dev libpcap-dev git \
+    lsb-release software-properties-common \
+    iputils-ping iputils-tracepath iputils-arping dnsutils \
+    openssh-server ruby-full libssl-dev \
+    libsqlite3-dev libpq-dev libyaml-dev \
+    libxml2-dev libxslt1-dev \
+    mingw-w64 binutils-mingw-w64 g++-mingw-w64 mingw-w64-tools gcc-mingw-w64 \ 
+    libcurl4-openssl-dev libgmp-dev sudo libffi-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set Python3 as the default Python command
+RUN ln -sf python3 /usr/bin/python
 
 # Set working directory for Ender
 WORKDIR /workspace/enderCLI
