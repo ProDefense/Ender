@@ -5,7 +5,6 @@ import threading
 import subprocess
 from socket_threading import Server
 from pymetasploit3.msfrpc import MsfRpcClient
-# from src.Eshu.c2.msf.metasploit import Metasploit
 
 from socket_threading import RED, BLUE, GREEN, RESET
 
@@ -16,18 +15,18 @@ RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
 
 msfInstance = None
 
-def connect_to_msfserver(password, server="127.0.0.1", port=1337):
+def connect_to_msfserver(password, server, port):
         """Connect to the MSF server."""
         print(f"=============== Starting Metasploit API ===============")
         while True:
             try:
-                client = MsfRpcClient(password, server, port)
+                msf_client = MsfRpcClient(password, server, port)
                 print("[+] Successfully connected to MSF Server!")
                 break
             except Exception as e:
                 print(f"[!] Failed to connect to MSF Server, RETRYING")
                 time.sleep(0.5)
-        return client
+        return msf_client
 
 def start_msfconsole_with_script(resource_script):
         """Start msfconsole with the specified resource script."""
@@ -42,14 +41,14 @@ def start_msfconsole_with_script(resource_script):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            time.sleep(0.5)  # Allow time for msfconsole to initialize
+            time.sleep(1)  # Allow time for msfconsole to initialize
             print(f"[+] msfconsole started successfully!")
         except Exception as e:
             print(f"[!] Error starting msfconsole: {e}")
 
 def connect_msf():
-    msf_instance = connect_to_msfserver(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
     start_msfconsole_with_script(RESOURCE_SCRIPT)
+    msf_instance = connect_to_msfserver(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
     print(f"{GREEN}[+] Registered Metasploit with name 'msf'{RESET}")
     return msf_instance
 
