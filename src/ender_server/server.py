@@ -15,41 +15,54 @@ RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
 
 msfInstance = None
 
-def connect_to_msfserver(password, server, port):
-        """Connect to the MSF server."""
-        print(f"=============== Starting Metasploit API ===============")
-        while True:
-            try:
-                msf_client = MsfRpcClient(password, server, port)
-                print("[+] Successfully connected to MSF Server!")
-                break
-            except Exception as e:
-                print(f"[!] Failed to connect to MSF Server, RETRYING")
-                time.sleep(0.5)
-        return msf_client
+def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
+    """Connect to the MSF server with retries."""
+    print(f"{GREEN}=============== Starting Metasploit API ==============={RESET}")
+    for attempt in range(max_retries):
+        try:
+            msf_client = MsfRpcClient(password, server=server, port=port)
+            print(f"{GREEN}[+] Successfully connected to MSF Server!{RESET}")
+            return msf_client
+        except Exception as e:
+            print(f"{RED}[!] Failed to connect to MSF Server: {e}, RETRYING ({attempt + 1}/{max_retries}){RESET}")
+            time.sleep(retry_delay)
+    print(f"{RED}[!] Max retries reached. Could not connect to MSF Server.{RESET}")
+    return None
 
 def start_msfconsole_with_script(resource_script):
-        """Start msfconsole with the specified resource script."""
-        if not os.path.exists(resource_script):
-            print(f"[!] Resource script {resource_script} not found!")
-            return
-        
-        print(f"[+] Starting msfconsole with resource script: {resource_script}")
-        try:
-            subprocess.Popen(
-                ["msfconsole", "-r", resource_script],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            time.sleep(1)  # Allow time for msfconsole to initialize
-            print(f"[+] msfconsole started successfully!")
-        except Exception as e:
-            print(f"[!] Error starting msfconsole: {e}")
+    """Start msfconsole with the specified resource script."""
+    if not os.path.exists(resource_script):
+        print(f"{RED}[!] Resource script {resource_script} not found!{RESET}")
+        return False
+    
+    print(f"{GREEN}[+] Starting msfconsole with resource script: {resource_script}{RESET}")
+    try:
+        process = subprocess.Popen(
+            ["msfconsole", "-r", resource_script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        # Wait briefly and check if the process started
+        time.sleep(5)  # Increased to give msfconsole time to start RPC
+        if process.poll() is not None:  # Process has terminated
+            stdout, stderr = process.communicate()
+            print(f"{RED}[!] msfconsole failed to start: {stderr}{RESET}")
+            return False
+        print(f"{GREEN}[+] msfconsole started successfully! PID: {process.pid}{RESET}")
+        return True
+    except Exception as e:
+        print(f"{RED}[!] Error starting msfconsole: {e}{RESET}")
+        return False
 
 def connect_msf():
-    start_msfconsole_with_script(RESOURCE_SCRIPT)
+    if not start_msfconsole_with_script(RESOURCE_SCRIPT):
+        return None
     msf_instance = connect_to_msfserver(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-    print(f"{GREEN}[+] Registered Metasploit with name 'msf'{RESET}")
+    if msf_instance:
+        print(f"{GREEN}[+] Registered Metasploit with name 'msf'{RESET}")
+    else:
+        print(f"{RED}[!] Failed to register Metasploit.{RESET}")
     return msf_instance
 
 def search_exploit(keyword=None, start=0, count=20):

@@ -81,7 +81,7 @@ RUN apt-get update && apt-get install -y \
 ENV PYTHONPATH="/workspace/ender/eshu/src:$PYTHONPATH"
 
 # Expose Ender-specific ports
-EXPOSE 1337 8081
+EXPOSE 80 4444 8080 55552 55553
 
 #start the start.sh script
 # CMD ["/bin/bash", "-c", "/workspace/enderCLI/start.sh"]
