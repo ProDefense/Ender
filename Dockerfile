@@ -22,6 +22,41 @@ RUN apt-get update && apt-get install -y \
 # Set Python3 as the default Python command
 RUN ln -sf python3 /usr/bin/python
 
+# Install pymetasploit3
+RUN pip install pymetasploit3
+
+# Set the default shell to Bash
+#SHELL ["/bin/bash", "-c"]
+
+# Install pymetasploit3
+RUN pip install pymetasploit3
+
+# Install Metasploit
+RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
+    cd /opt/metasploit-framework && \
+    git submodule init && \
+    git submodule update && \
+    gem install bundler && \
+    bundle install
+
+ENV PATH="/opt/metasploit-framework/:$PATH"
+
+# Run the msfconsole.rc commands and start Metasploit RPC service
+COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
+
+# Install Sliver-py
+RUN pip install sliver-py
+
+# Sliver Client and Sliver Server
+
+RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux
+
+RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-server_linux
+
+RUN chmod +x sliver-client_linux sliver-server_linux && \
+    mv sliver-client_linux /usr/local/bin/sliver-client && \
+    mv sliver-server_linux /usr/local/bin/sliver-server
+
 # Set working directory for Ender
 WORKDIR /workspace/enderCLI
 

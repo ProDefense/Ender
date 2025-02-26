@@ -19,7 +19,7 @@ services:
       - RPCPASS=memes
       - RPCPORT=1337
     volumes:
-      - ./eshu/src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
+      - ./src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
     networks:
       localnet:
         ipv4_address: 10.1.1.2
