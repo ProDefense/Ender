@@ -79,7 +79,7 @@ def search_exploit(keyword=None, start=0, count=20):
     numbered_exploits = [f"{i + 1 + start}. {exploit}" for i, exploit in enumerate(paginated_exploits)]
     # Add prompt if there are more results or if we're in a search session
     if start + count < total:
-        numbered_exploits.append(f"{BLUE}[SERVER] Send 'next' for more or 'exit' to return to CLI{RESET}")
+        numbered_exploits.append(f"{BLUE}[SERVER] Send 'next' for next page, Send 'prev' for previous page or 'exit' to return to CLI{RESET}")
     return numbered_exploits, total
 
 def search_auxiliary_modules(keyword=None, start=0, count=20):
@@ -165,6 +165,17 @@ def handle_message(data, client_address):
             response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
         else:
             client_state['start'] += 20
+            results, total = search_exploit(client_state['keyword'], client_state['start'])
+            if client_state['keyword']:
+                response = f"{BLUE}Exploit modules matching '{client_state['keyword']}' ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules found for '{client_state['keyword']}'.{RESET}"
+            else:
+                response = f"{BLUE}All exploit modules ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules available.{RESET}"
+
+    elif command == "prev" and client_state['in_search']:
+        if msfInstance is None:
+            response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+        else:
+            client_state['start'] -= 20
             results, total = search_exploit(client_state['keyword'], client_state['start'])
             if client_state['keyword']:
                 response = f"{BLUE}Exploit modules matching '{client_state['keyword']}' ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules found for '{client_state['keyword']}'.{RESET}"
