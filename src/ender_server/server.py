@@ -4,7 +4,7 @@ import socket
 import threading
 import subprocess
 from socket_threading import Server
-import json # For passing parameter data
+import json
 from pymetasploit3.msfrpc import MsfRpcClient
 
 from socket_threading import RED, BLUE, GREEN, RESET
@@ -96,22 +96,55 @@ def search_auxiliary_modules(keyword=None, start=0, count=20):
     paginated_auxiliary = filtered_auxiliary[start:start + count]
     return paginated_auxiliary, total
 
-def run_msf_exploit(mtype, mname, target_ip, username, password, threads):
+def parse_param_value(opt_data, user_input):
+    """
+    Convert 'user_input' (string) to the correct type based on 'opt_data'.
+    If the default or 'type' is bool, parse user_input -> boolean.
+    If integer, parse user_input -> int.
+    Otherwise, keep as string.
+    """
+    msf_type = opt_data.get('type', '').lower()  # e.g. "bool", "string", "port", ...
+    default_val = opt_data.get('default', None)
+
+    user_input = user_input.strip()
+    if not user_input:
+        return None  # signal "skip" so we rely on Metasploit’s default
+
+    # If user typed "true"/"false", we can parse it
+    if msf_type == 'bool' or isinstance(default_val, bool):
+        return (user_input.lower() == 'true')
+    elif msf_type == 'integer' or isinstance(default_val, int):
+        return int(user_input)
+    elif msf_type == 'port':
+        return int(user_input)
+    # If you want to handle 'float' or 'double' similarly, do so here
+
+    # Otherwise, treat as string
+    return user_input
+
+def run_msf_exploit(mtype, mname, user_params):
     """Run the selected exploit with parameters."""
     exploit = msfInstance.modules.use(mtype, mname)
     if not exploit:
         return f"{RED}[!] Could not load {mtype} module: {mname}"
-    exploit["RHOSTS"] = target_ip
-    exploit["USERNAME"] = username
-    exploit["PASSWORD"] = password
-    exploit["THREADS"] = threads
-    print(f"{GREEN}Running exploit: {mname} on {target_ip} with {threads} threads...{RESET}")
+
+    info = exploit._info.get('options', {})
+    for param_key, param_value in user_params.items():
+        # param_value is the string type in the client
+        # look up the official msf opt_data
+        opt_data = info.get(param_key, {})
+        typed_val = parse_param_value(opt_data, str(param_value))
+
+        # If typed_val is None => user typed nothing => skip
+        if typed_val is None:
+            continue
+
+        exploit[param_key] = typed_val
+
+    print(f"{GREEN}Running exploit: {mname}{RESET}")
     result = exploit.execute()
     print(f"{BLUE}Exploit Result: {result}{RESET}")
-    if 'job_id' in result:
-        return f"{BLUE}[+] Exploit scan started successfully.{RESET}"
-    else:
-        return f"{RED}[!] Scan failed.{RESET}"
+    return result
 
 #####################
 # Validate Module 
@@ -123,7 +156,6 @@ def validate_module_type(module_type, module_name):
     or vice versa, we can handle that gracefully. 
     Return (bool_ok, error_message).
     """
-    global msfInstance
     if module_type == "exploit":
         # Check if it exists in the exploit list
         if module_name not in msfInstance.modules.exploits:
@@ -224,16 +256,26 @@ def handle_message(data, client_address):
                                 'desc': desc_val
                             })
 
-                    # Send the JSON request to the client
-                    param_request = {
-                            'action': 'PARAMS_REQUEST',
-                            'module_type': module_type,
-                            'module_name': module_name,
-                            'options': module_options
-                        }
-                    response = (json.dumps(param_request))
-
+                    # Save client_state['in_run'] as true
+                    # Save options in client_state['exploit_options']
                     client_state['in_run'] = True
+                    client_state['exploit_options'] = module_options
+                    client_state['user_params'] = {}
+                    client_state['module_type'] = module_type
+                    client_state['module_name'] = module_name
+
+                    # Query first exploit option
+                    response = f"{BLUE}Please enter the {client_state['exploit_options'][0]['name']}: {RESET}"
+    
+    elif client_state['in_run']:
+        client_state['user_params'][client_state['exploit_options'][0]['name']] = command
+        client_state['exploit_options'].pop(0)
+        if len(client_state['exploit_options']) == 0:
+            response = json.dumps(run_msf_exploit(client_state['module_type'], client_state['module_name'], client_state['user_params']))
+            client_state['in_run'] = False
+            client_state['user_params'] = None
+        else:
+            response = f"{BLUE}Please enter the {client_state['exploit_options'][0]['name']}: {RESET}"
     
     elif command == "next" and client_state['in_search']:
         if msfInstance is None:
