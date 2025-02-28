@@ -12,8 +12,20 @@ Terminal 1:
 "python ender_server/server.py"
 
 Terminal 2:
-"docker exec -it ender-client /bin/bash"
+"docker exec -it operator /bin/bash"
 "python ender_client/client.py"
 Enter: "connect"
 
+To test search exploits / auxiliary, type "search exploit/auxiliary "module_name""
+To test run exploit, type "run exploit/auxiliary "module_name""
+Type in parameters when needed
 
+Example of "run exploit" with scanner/ssh/ssh_login
+Type "run auxiliary scanner/ssh/ssh_login"
+For "USERNAME", type "msfadmin"
+For "PASSWORD", type "msfadmin"
+For "RHOSTS", type "10.1.1.3"
+For "THREADS", type "5"
+For "RPORT", press enter
+
+Exploit should return
