@@ -68,6 +68,9 @@ COPY ./eshu/ /workspace/enderCLI/
 COPY ./start.sh /workspace/enderCLI/start.sh
 RUN chmod +x /workspace/enderCLI/start.sh
 
+# To fix SSH issues 
+RUN GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=True pip install --use-pep517 --force-reinstall grpcio
+
 # Install Ender-specific dependencies (if any)
 RUN python3 -m pip install --upgrade pip setuptools
 RUN if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
