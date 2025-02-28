@@ -4,6 +4,7 @@ import socket
 import threading
 import subprocess
 from socket_threading import Server
+import json # For passing parameter data
 from pymetasploit3.msfrpc import MsfRpcClient
 
 from socket_threading import RED, BLUE, GREEN, RESET
@@ -122,14 +123,15 @@ def validate_module_type(module_type, module_name):
     or vice versa, we can handle that gracefully. 
     Return (bool_ok, error_message).
     """
+    global msfInstance
     if module_type == "exploit":
         # Check if it exists in the exploit list
-        if module_name not in msfInstance.client.modules.exploits:
+        if module_name not in msfInstance.modules.exploits:
             return False, f"{RED}{module_name} is NOT an exploit. Try: run auxiliary {module_name}{RESET}"
     elif module_type == "auxiliary":
         # Check if it exists in the auxiliary list
-        if module_name not in msfInstance.client.modules.auxiliary:
-            return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}"
+        if module_name not in msfInstance.modules.auxiliary:
+            return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}{RESET}"
     return True, None
 
 def handle_message(data, client_address):
@@ -183,61 +185,55 @@ def handle_message(data, client_address):
 
     elif command == "run":
         if len(options) < 3:
-            response = f"{RED}[!] Invalid run command: run [exploits]/[auxiliary] [module_name]{RESET}"
-            continue
-        
-        module_type = options[1]
-        module_name = options[2]
-
-        if msfInstance is None:
-            response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
-            continue 
-
-        # Validate or skip
-        valid_ok, err_msg = validate_module_type(module_type, module_name)
-        if not valid_ok:
-            response = err_msg
-            continue
-
-        # Create exploit object
-        exploit = msfInstance.client.modules.use(module_type, module_name)
-        if not exploit:
-            response = f"{RED}[!] Could not load {module_type} module: {module_name}"
-            continue
-
-        # Hard-code any required booleans or default values you don't want to prompt for
-        exploit_info = exploit._info
-        if 'options' in exploit_info and isinstance(exploit_info['options'], dict):
-            options_dict = exploit_info['options']
+            response = f"{RED}[!] Invalid run command: run [exploit]/[auxiliary] [module_name]{RESET}"
         else:
-            options_dict = {}
+            module_type = options[1]
+            module_name = options[2]
+            valid_ok, err_msg = validate_module_type(module_type, module_name)
 
-        ALWAYS_PROMPT_OPTS = {"RHOSTS", "USERNAME", "PASSWORD", "THREADS", "RPORT"}
+            if msfInstance is None:
+                response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+            elif not valid_ok:
+                response = err_msg
+            else:
+                exploit = msfInstance.modules.use(module_type, module_name)
 
-        # Build prompt list for just these 5
-        module_options = []
-            for opt_name, opt_data in options_dict.items():
-                if opt_name in ALWAYS_PROMPT_OPTS:
-                    default_val = opt_data.get('default', "")
-                    desc_val    = opt_data.get('desc', "")
-                    # We'll keep 'required' = False so it doesn't say "required" in the prompt
-                    module_options.append({
-                        'name': opt_name,
-                        'required': False,
-                        'default': default_val,
-                        'desc': desc_val
-                    })
+                if not exploit:
+                    response = f"{RED}[!] Could not load {module_type} module: {module_name}{RESET}"
+                else:
+                    # Hard-code any required booleans or default values you don't want to prompt for
+                    exploit_info = exploit._info
+                    if 'options' in exploit_info and isinstance(exploit_info['options'], dict):
+                        options_dict = exploit_info['options']
+                    else:
+                        options_dict = {}
 
-        # Send the JSON request to the client
-        param_request = {
-                'action': 'PARAMS_REQUEST',
-                'module_type': module_type,
-                'module_name': module_name,
-                'options': module_options
-            }
-        
+                    ALWAYS_PROMPT_OPTS = {"RHOSTS", "USERNAME", "PASSWORD", "THREADS", "RPORT"}
 
-        client_state['in_run'] = True
+                    # Build prompt list for just these 5
+                    module_options = []
+                    for opt_name, opt_data in options_dict.items():
+                        if opt_name in ALWAYS_PROMPT_OPTS:
+                            default_val = opt_data.get('default', "")
+                            desc_val    = opt_data.get('desc', "")
+                            # We'll keep 'required' = False so it doesn't say "required" in the prompt
+                            module_options.append({
+                                'name': opt_name,
+                                'required': False,
+                                'default': default_val,
+                                'desc': desc_val
+                            })
+
+                    # Send the JSON request to the client
+                    param_request = {
+                            'action': 'PARAMS_REQUEST',
+                            'module_type': module_type,
+                            'module_name': module_name,
+                            'options': module_options
+                        }
+                    response = (json.dumps(param_request))
+
+                    client_state['in_run'] = True
     
     elif command == "next" and client_state['in_search']:
         if msfInstance is None:
