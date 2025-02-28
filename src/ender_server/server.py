@@ -95,10 +95,11 @@ def search_auxiliary_modules(keyword=None, start=0, count=20):
     paginated_auxiliary = filtered_auxiliary[start:start + count]
     return paginated_auxiliary, total
 
-def run_msf_exploit(mname, target_ip, username, password, threads):
+def run_msf_exploit(mtype, mname, target_ip, username, password, threads):
     """Run the selected exploit with parameters."""
-    mtype = 'auxiliary'  # Change to 'exploit' if intended
     exploit = msfInstance.modules.use(mtype, mname)
+    if not exploit:
+        return f"{RED}[!] Could not load {mtype} module: {mname}"
     exploit["RHOSTS"] = target_ip
     exploit["USERNAME"] = username
     exploit["PASSWORD"] = password
@@ -110,6 +111,26 @@ def run_msf_exploit(mname, target_ip, username, password, threads):
         return f"{BLUE}[+] Exploit scan started successfully.{RESET}"
     else:
         return f"{RED}[!] Scan failed.{RESET}"
+
+#####################
+# Validate Module 
+#####################
+def validate_module_type(module_type, module_name):
+    """
+    Optional utility:
+    If the user typed 'run exploit X' but 'X' is actually an auxiliary, 
+    or vice versa, we can handle that gracefully. 
+    Return (bool_ok, error_message).
+    """
+    if module_type == "exploit":
+        # Check if it exists in the exploit list
+        if module_name not in msfInstance.client.modules.exploits:
+            return False, f"{RED}{module_name} is NOT an exploit. Try: run auxiliary {module_name}{RESET}"
+    elif module_type == "auxiliary":
+        # Check if it exists in the auxiliary list
+        if module_name not in msfInstance.client.modules.auxiliary:
+            return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}"
+    return True, None
 
 def handle_message(data, client_address):
     """Handle messages from clients."""
@@ -159,6 +180,64 @@ def handle_message(data, client_address):
                     response = f"{BLUE}All auxiliary modules ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No auxiliary modules available.{RESET}"
             else:
                 response = f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
+
+    elif command == "run":
+        if len(options) < 3:
+            response = f"{RED}[!] Invalid run command: run [exploits]/[auxiliary] [module_name]{RESET}"
+            continue
+        
+        module_type = options[1]
+        module_name = options[2]
+
+        if msfInstance is None:
+            response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+            continue 
+
+        # Validate or skip
+        valid_ok, err_msg = validate_module_type(module_type, module_name)
+        if not valid_ok:
+            response = err_msg
+            continue
+
+        # Create exploit object
+        exploit = msfInstance.client.modules.use(module_type, module_name)
+        if not exploit:
+            response = f"{RED}[!] Could not load {module_type} module: {module_name}"
+            continue
+
+        # Hard-code any required booleans or default values you don't want to prompt for
+        exploit_info = exploit._info
+        if 'options' in exploit_info and isinstance(exploit_info['options'], dict):
+            options_dict = exploit_info['options']
+        else:
+            options_dict = {}
+
+        ALWAYS_PROMPT_OPTS = {"RHOSTS", "USERNAME", "PASSWORD", "THREADS", "RPORT"}
+
+        # Build prompt list for just these 5
+        module_options = []
+            for opt_name, opt_data in options_dict.items():
+                if opt_name in ALWAYS_PROMPT_OPTS:
+                    default_val = opt_data.get('default', "")
+                    desc_val    = opt_data.get('desc', "")
+                    # We'll keep 'required' = False so it doesn't say "required" in the prompt
+                    module_options.append({
+                        'name': opt_name,
+                        'required': False,
+                        'default': default_val,
+                        'desc': desc_val
+                    })
+
+        # Send the JSON request to the client
+        param_request = {
+                'action': 'PARAMS_REQUEST',
+                'module_type': module_type,
+                'module_name': module_name,
+                'options': module_options
+            }
+        
+
+        client_state['in_run'] = True
     
     elif command == "next" and client_state['in_search']:
         if msfInstance is None:
