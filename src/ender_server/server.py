@@ -1,237 +1,324 @@
 import os
+import time
 import socket
 import threading
-import time
-from eshu.src.Eshu.c2.msf.metasploit import Metasploit
+import subprocess
+from socket_threading import Server
+import json
+from pymetasploit3.msfrpc import MsfRpcClient
 
-global msfInstance
-# Load Metasploit config
-MSF_CONFIG_PATH = "eshu/src/config_files/msf_config.env"
+from socket_threading import RED, BLUE, GREEN, RESET
 
-def load_msf_config(file_path):
-    """Load MSF configuration from a .env file with default fallbacks."""
-    config = {"MSF_HOST": "127.0.0.1", "MSF_PORT": 1337, "MSF_PASSWORD": "memes"}
+MSF_HOST = "10.1.1.2"
+MSF_PORT = 1337
+MSF_PASSWORD = "memes"
+RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
+
+msfInstance = None
+
+def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
+    """Connect to the MSF server with retries."""
+    print(f"{GREEN}=============== Starting Metasploit API ==============={RESET}")
+    for attempt in range(max_retries):
+        try:
+            msf_client = MsfRpcClient(password, server=server, port=port)
+            print(f"{GREEN}[+] Successfully connected to MSF Server!{RESET}")
+            return msf_client
+        except Exception as e:
+            print(f"{RED}[!] Failed to connect to MSF Server: {e}, RETRYING ({attempt + 1}/{max_retries}){RESET}")
+            time.sleep(retry_delay)
+    print(f"{RED}[!] Max retries reached. Could not connect to MSF Server.{RESET}")
+    return None
+
+def start_msfconsole_with_script(resource_script):
+    """Start msfconsole with the specified resource script."""
+    if not os.path.exists(resource_script):
+        print(f"{RED}[!] Resource script {resource_script} not found!{RESET}")
+        return False
     
+    print(f"{GREEN}[+] Starting msfconsole with resource script: {resource_script}{RESET}")
     try:
-        with open(file_path, "r") as f:
-            for line in f:
-                if "=" in line and not line.startswith("#"):  # Ignore comments
-                    key, value = line.strip().split("=", 1)
-                    config[key] = value
-
-        # Ensure MSF_PORT is an integer
-        config["MSF_PORT"] = int(config.get("MSF_PORT", 1337))  # Ensures valid integer
-        
-    except FileNotFoundError:
-        print(f"[!] msf_config.env not found at {file_path}, using defaults.")
-
-    except ValueError:
-        print("[!] Invalid MSF_PORT in config, using default 1337.")
-        config["MSF_PORT"] = 1337  # Fallback if port is invalid
-
-    return config
-
-msf_config = load_msf_config(MSF_CONFIG_PATH)
-MSF_HOST = msf_config["MSF_HOST"]
-MSF_PORT = msf_config["MSF_PORT"]
-MSF_PASSWORD = msf_config["MSF_PASSWORD"]
-
-# ✅ Automatically start MSF RPC inside the operator (Eshu)
-#def start_msf_rpc():
-#    """Send a command to start Metasploit RPC in the Eshu operator container."""
-#    operator_ip = "10.1.1.2"  # Update if necessary
-#
-#    print(f"[+] Sending remote start command to {operator_ip}...")
-#    try:
-#        ssh_command = (
-#            f"ssh root@{operator_ip} 'msfconsole -q -x \"load msgrpc Pass={MSF_PASSWORD} "
-#            f"ServerPort={MSF_PORT} ServerHost=0.0.0.0; exit\"'"
-#        )
-#        os.system(ssh_command)
-#        print(f"[+] MSF RPC started on {operator_ip}:{MSF_PORT}")
-#    except Exception as e:
-#        print(f"[!] Failed to start MSF RPC remotely: {e}")
-#
-## ✅ Improved Metasploit Connection
-#def connect_msf():
-#    """Handles connection to the Metasploit RPC server."""
-#    print(f"[+] Checking MSF connection at {MSF_HOST}:{MSF_PORT}...")
-#
-#    # Start Metasploit RPC if necessary
-#    start_msf_rpc()
-#
-#    # Wait for MSF RPC to be ready
-#    for _ in range(10):  # Retry 10 times with 1s intervals
-#        try:
-#            global msfInstance
-#            msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-#            print("[+] Successfully connected to Metasploit!")
-#            return "[+] Connected to Metasploit!"
-#        except Exception as e:
-#            print(f"[!] MSF not ready yet, retrying... {e}")
-#            time.sleep(1)
-#
-#    return "[!] Failed to connect after multiple attempts."
-
-#Tracker Server Function
-#create a UDP socket
-tracker_ip = "10.2.2.4"
-tracker_port = 5000
-
-tracker_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-tracker_socket.bind((tracker_ip, tracker_port))
-
-def handle_message():
-    while True:
-        msg, peer_addr = tracker_socket.recvfrom(1024)
-        decoded_msg = msg.decode()
-        print(f"Received from {peer_addr}: {decoded_msg}")
-
-        options = decoded_msg.split()
-        command = options[0]
-
-        if command == "connect":
-            response = connect_msf()
-            tracker_socket.sendto(response.encode(), peer_addr)
-
-        elif command == "exit":
-            print("Closing Ender...")
-            break
-
-        elif command == "display":
-            if options[1] == "exploits":
-                start = int(options[2]) if len(options) > 2 else 0
-                exploits, total = display_exploits(start)
-                response = f"Showing {start} - {start+20} of {total} exploits:\n" + "\n".join(exploits)
-            elif options[1] == "auxiliary":
-                start = int(options[2]) if len(options) > 2 else 0
-                auxiliaries, total = display_auxiliary_modules(start)
-                response = f"Showing {start} - {start+20} of {total} auxiliary modules:\n" + f"\n".join(auxiliaries)
-            else:
-                response = "Invalid display option. Use 'display exploits' or 'display auxiliary'."
-            
-            tracker_socket.sendto(response.encode(), peer_addr)
-
-        elif command == "search":
-            if len(options) < 3:
-                response = "Invalid search command: search {exploits or auxiliary} {module keyword1/keyword2} {index}"
-            else:
-                module_type = options[1]
-                keyword = options[2]
-                start = int(options[3]) if len(options) > 3 else 0  # Default start index
-
-                if module_type == "exploits":
-                    results, total = search_exploits(keyword, start)
-                elif module_type == "auxiliary":
-                    results, total = search_auxiliary_modules(keyword, start)
-                else:
-                    response = "Invalid module type. Use 'search exploits' or 'search auxiliary'."
-                    tracker_socket.sendto(response.encode(), peer_addr)
-                    #continue
-                
-                response = f"Search results for '{keyword}' ({start}-{start+20} of {total}):\n" + "\n".join(results) if results else "No matches found."
-
-            tracker_socket.sendto(response.encode(), peer_addr)
-
-        elif command == "run" and options[1] == "exploit":
-            if len(options) != 3:
-                response = "Invalid run command: run exploit {chosen module}"
-                tracker_socket.sendto(response.encode(), peer_addr)
-            else:
-                exploit_name = options[2]
-                tracker_socket.sendto(f"Please enter parameters for {exploit_name}:".encode(), peer_addr)
-
-                params_msg, _ = tracker_socket.recvfrom(1024)
-                params = params_msg.decode().split(' ')
-                target_ip, username, password, threads = params[0], params[1], params[2], int(params[3])
-
-                result = run_msf_exploit(exploit_name, target_ip, username, password, threads)
-                tracker_socket.sendto(f"Exploit result: {result}".encode(), peer_addr)
-
-        else:
-            response = "Please re-enter the command."
-            tracker_socket.sendto(response.encode(), peer_addr)
-
-def search_exploits(keyword, start=0, count=20):
-    """Search for exploits containing the given keyword with pagination."""
-    exploits = [exploit for exploit in msfInstance.client.modules.exploits if keyword.lower() in exploit.lower()]
-    
-    total = len(exploits)
-    end = start + count
-    paginated_exploits = exploits[start:end]
-
-    return paginated_exploits, total  # Return total count for pagination
-
-def search_auxiliary_modules(keyword, start=0, count=20):
-    """Search for auxiliary modules containing the given keyword with pagination."""
-    auxiliary_modules = [aux for aux in msfInstance.client.modules.auxiliary if keyword.lower() in aux.lower()]
-
-    total = len(auxiliary_modules)
-    end = start + count
-    paginated_auxiliary = auxiliary_modules[start:end]
-
-    return paginated_auxiliary, total  # Return total count for pagination
-    
-def display_exploits(start=0, count=20):
-    """Fetch and display exploits with pagination."""
-    exploits = msfInstance.client.modules.exploits
-    available_exploits = []
-
-    end = start + count
-    for exploit in exploits[start:end]:  # Get exploits in chunks
-        available_exploits.append(f"Exploit Module: {exploit}")
-
-    return available_exploits, len(exploits)  # Return total exploits for pagination
-
-def display_auxiliary_modules(start=0, count=20):
-    """Fetch and display auxiliary modules with pagination."""
-    auxiliary_modules = msfInstance.client.modules.auxiliary
-    available_auxiliary = []
-
-    end = start + count
-    for aux in auxiliary_modules[start:end]:  # Get auxiliary modules in chunks
-        available_auxiliary.append(f"Auxiliary Module: {aux}")
-
-    return available_auxiliary, len(auxiliary_modules)  # Return total count for pagination
-
-def run_msf_exploit(mname, target_ip, username, password, threads):
-    """Run the selected exploit with parameters."""
-    mtype = 'auxiliary'
-    exploit = msfInstance.client.modules.use(mtype, mname)
-    exploit["RHOSTS"] = target_ip
-    exploit["USERNAME"] = username
-    exploit["PASSWORD"] = password
-    exploit["THREADS"] = threads
-
-    print(f"Running exploit: {mname} on {target_ip} with {threads} threads...")
-    result = exploit.execute()
-    print("Exploit Result:", result)
-
-    if 'job_id' in result:
-        print("[+] Exploit scan started successfully.")
-    else:
-        print("[!] Scan failed.")
-        
-    return result
+        process = subprocess.Popen(
+            ["msfconsole", "-r", resource_script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        # Wait briefly and check if the process started
+        time.sleep(5)  # Increased to give msfconsole time to start RPC
+        if process.poll() is not None:  # Process has terminated
+            stdout, stderr = process.communicate()
+            print(f"{RED}[!] msfconsole failed to start: {stderr}{RESET}")
+            return False
+        print(f"{GREEN}[+] msfconsole started successfully! PID: {process.pid}{RESET}")
+        return True
+    except Exception as e:
+        print(f"{RED}[!] Error starting msfconsole: {e}{RESET}")
+        return False
 
 def connect_msf():
-    """Handles connection to the Metasploit RPC server."""
-    print("[+] Connecting to Metasploit...")
-    try:
-        global msfInstance
-        msfInstance = Metasploit(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
-        print("[+] Successfully connected to Metasploit!")
-        return "[+] Connected to Metasploit!"
-    except Exception as e:
-        print(f"[!] Failed to connect to MSF: {e}")
-        return f"[!] Failed to connect: {e}"
+    if not start_msfconsole_with_script(RESOURCE_SCRIPT):
+        return None
+    msf_instance = connect_to_msfserver(password=MSF_PASSWORD, server=MSF_HOST, port=MSF_PORT)
+    if msf_instance:
+        print(f"{GREEN}[+] Registered Metasploit with name 'msf'{RESET}")
+    else:
+        print(f"{RED}[!] Failed to register Metasploit.{RESET}")
+    return msf_instance
+
+def search_exploit(keyword=None, start=0, count=20):
+    """Search for exploits, numbering results with pagination and prompt."""
+    if msfInstance is None:
+        return [], 0
+    exploits = msfInstance.modules.exploits
+    if keyword is None:
+        filtered_exploits = exploits
+    else:
+        filtered_exploits = [exploit for exploit in exploits if keyword.lower() in exploit.lower()]
+    total = len(filtered_exploits)
+    paginated_exploits = filtered_exploits[start:start + count]
+    numbered_exploits = [f"{i + 1 + start}. {exploit}" for i, exploit in enumerate(paginated_exploits)]
+    # Add prompt if there are more results or if we're in a search session
+    if start + count < total:
+        numbered_exploits.append(f"{BLUE}[SERVER] Send 'next' for next page, Send 'prev' for previous page or 'exit' to return to CLI{RESET}")
+    return numbered_exploits, total
+
+def search_auxiliary_modules(keyword=None, start=0, count=20):
+    """Search for auxiliary modules with pagination."""
+    if msfInstance is None:
+        return [], 0
+    auxiliary_modules = msfInstance.modules.auxiliary
+    if keyword is None:
+        filtered_auxiliary = auxiliary_modules
+    else:
+        filtered_auxiliary = [aux for aux in auxiliary_modules if keyword.lower() in aux.lower()]
+    total = len(filtered_auxiliary)
+    paginated_auxiliary = filtered_auxiliary[start:start + count]
+    return paginated_auxiliary, total
+
+def parse_param_value(opt_data, user_input):
+    """
+    Convert 'user_input' (string) to the correct type based on 'opt_data'.
+    If the default or 'type' is bool, parse user_input -> boolean.
+    If integer, parse user_input -> int.
+    Otherwise, keep as string.
+    """
+    msf_type = opt_data.get('type', '').lower()  # e.g. "bool", "string", "port", ...
+    default_val = opt_data.get('default', None)
+
+    user_input = user_input.strip()
+    if not user_input:
+        return None  # signal "skip" so we rely on Metasploit’s default
+
+    # If user typed "true"/"false", we can parse it
+    if msf_type == 'bool' or isinstance(default_val, bool):
+        return (user_input.lower() == 'true')
+    elif msf_type == 'integer' or isinstance(default_val, int):
+        return int(user_input)
+    elif msf_type == 'port':
+        return int(user_input)
+    # If you want to handle 'float' or 'double' similarly, do so here
+
+    # Otherwise, treat as string
+    return user_input
+
+def run_msf_exploit(mtype, mname, user_params):
+    """Run the selected exploit with parameters."""
+    exploit = msfInstance.modules.use(mtype, mname)
+    if not exploit:
+        return f"{RED}[!] Could not load {mtype} module: {mname}"
+
+    info = exploit._info.get('options', {})
+    for param_key, param_value in user_params.items():
+        # param_value is the string type in the client
+        # look up the official msf opt_data
+        opt_data = info.get(param_key, {})
+        typed_val = parse_param_value(opt_data, str(param_value))
+
+        # If typed_val is None => user typed nothing => skip
+        if typed_val is None:
+            continue
+
+        exploit[param_key] = typed_val
+
+    print(f"{GREEN}Running exploit: {mname}{RESET}")
+    result = exploit.execute()
+    print(f"{BLUE}Exploit Result: {result}{RESET}")
+    return result
+
+#####################
+# Validate Module 
+#####################
+def validate_module_type(module_type, module_name):
+    """
+    Optional utility:
+    If the user typed 'run exploit X' but 'X' is actually an auxiliary, 
+    or vice versa, we can handle that gracefully. 
+    Return (bool_ok, error_message).
+    """
+    if module_type == "exploit":
+        # Check if it exists in the exploit list
+        if module_name not in msfInstance.modules.exploits:
+            return False, f"{RED}{module_name} is NOT an exploit. Try: run auxiliary {module_name}{RESET}"
+    elif module_type == "auxiliary":
+        # Check if it exists in the auxiliary list
+        if module_name not in msfInstance.modules.auxiliary:
+            return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}{RESET}"
+    return True, None
+
+def handle_message(data, client_address):
+    """Handle messages from clients."""
+    global msfInstance
+    print(f"{BLUE}[Server] Processing message: '{data}' from {client_address}{RESET}")
+    options = data.split()
+    command = options[0].lower() if options else ""
+
+    # Static variable to track search state per client
+    if not hasattr(handle_message, 'search_state'):
+        handle_message.search_state = {}
+    client_state = handle_message.search_state.setdefault(client_address, 
+                                                          {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None})
+
+    if command == "connect":
+        response = f"{BLUE}[+] Connecting to MSF...{RESET}"
+        msfInstance = connect_msf()
+        response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
+        client_state['in_search'] = False  # Reset search state on connect
+        client_state['in_run'] = False
+    
+    elif command == "search":
+        if len(options) < 3:
+            response = f"{RED}[!] Invalid search command: search [exploits]/[auxiliary] [keyword] [start_index]{RESET}"
+        else:
+            module_type = options[1]
+            keyword = options[2] if len(options) > 2 else None
+            start = int(options[3]) if len(options) > 3 and options[3].isdigit() else 0
+
+            if msfInstance is None:
+                response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+            elif module_type == "exploits":
+                client_state['keyword'] = keyword
+                client_state['start'] = start
+                client_state['in_search'] = True
+                client_state['in_run'] = False
+                results, total = search_exploit(keyword, start)
+                if keyword:
+                    response = f"{BLUE}Exploit modules matching '{keyword}' ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No exploit modules found for '{keyword}'.{RESET}"
+                else:
+                    response = f"{BLUE}All exploit modules ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No exploit modules available.{RESET}"
+            elif module_type == "auxiliary":
+                results, total = search_auxiliary_modules(keyword, start)
+                if keyword:
+                    response = f"{BLUE}Auxiliary modules matching '{keyword}' ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No auxiliary modules found for '{keyword}'.{RESET}"
+                else:
+                    response = f"{BLUE}All auxiliary modules ({start}-{min(start+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No auxiliary modules available.{RESET}"
+            else:
+                response = f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
+
+    elif command == "run":
+        if len(options) < 3:
+            response = f"{RED}[!] Invalid run command: run [exploit]/[auxiliary] [module_name]{RESET}"
+        else:
+            module_type = options[1]
+            module_name = options[2]
+            valid_ok, err_msg = validate_module_type(module_type, module_name)
+
+            if msfInstance is None:
+                response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+            elif not valid_ok:
+                response = err_msg
+            else:
+                exploit = msfInstance.modules.use(module_type, module_name)
+
+                if not exploit:
+                    response = f"{RED}[!] Could not load {module_type} module: {module_name}{RESET}"
+                else:
+                    # Hard-code any required booleans or default values you don't want to prompt for
+                    exploit_info = exploit._info
+                    if 'options' in exploit_info and isinstance(exploit_info['options'], dict):
+                        options_dict = exploit_info['options']
+                    else:
+                        options_dict = {}
+
+                    ALWAYS_PROMPT_OPTS = {"RHOSTS", "USERNAME", "PASSWORD", "THREADS", "RPORT"}
+
+                    # Build prompt list for just these 5
+                    module_options = []
+                    for opt_name, opt_data in options_dict.items():
+                        if opt_name in ALWAYS_PROMPT_OPTS:
+                            default_val = opt_data.get('default', "")
+                            desc_val    = opt_data.get('desc', "")
+                            # We'll keep 'required' = False so it doesn't say "required" in the prompt
+                            module_options.append({
+                                'name': opt_name,
+                                'required': False,
+                                'default': default_val,
+                                'desc': desc_val
+                            })
+
+                    # Save client_state['in_run'] as true
+                    # Save options in client_state['exploit_options']
+                    client_state['in_run'] = True
+                    client_state['exploit_options'] = module_options
+                    client_state['user_params'] = {}
+                    client_state['module_type'] = module_type
+                    client_state['module_name'] = module_name
+
+                    # Query first exploit option
+                    response = f"{BLUE}Please enter the {client_state['exploit_options'][0]['name']}: {RESET}"
+    
+    elif client_state['in_run']:
+        client_state['user_params'][client_state['exploit_options'][0]['name']] = command
+        client_state['exploit_options'].pop(0)
+        if len(client_state['exploit_options']) == 0:
+            response = json.dumps(run_msf_exploit(client_state['module_type'], client_state['module_name'], client_state['user_params']))
+            client_state['in_run'] = False
+            client_state['user_params'] = None
+        else:
+            response = f"{BLUE}Please enter the {client_state['exploit_options'][0]['name']}: {RESET}"
+    
+    elif command == "next" and client_state['in_search']:
+        if msfInstance is None:
+            response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+        else:
+            client_state['start'] += 20
+            results, total = search_exploit(client_state['keyword'], client_state['start'])
+            if client_state['keyword']:
+                response = f"{BLUE}Exploit modules matching '{client_state['keyword']}' ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules found for '{client_state['keyword']}'.{RESET}"
+            else:
+                response = f"{BLUE}All exploit modules ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules available.{RESET}"
+
+    elif command == "prev" and client_state['in_search']:
+        if msfInstance is None:
+            response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
+        else:
+            client_state['start'] -= 20
+            results, total = search_exploit(client_state['keyword'], client_state['start'])
+            if client_state['keyword']:
+                response = f"{BLUE}Exploit modules matching '{client_state['keyword']}' ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules found for '{client_state['keyword']}'.{RESET}"
+            else:
+                response = f"{BLUE}All exploit modules ({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}" + "\n".join(results) if results else f"{BLUE}No more exploit modules available.{RESET}"
+    
+    elif command == "exit" and client_state['in_search']:
+        client_state['in_search'] = False
+        client_state['keyword'] = None
+        client_state['start'] = 0
+        response = f"{BLUE}Returned to normal CLI.{RESET}"
+    
+    else:
+        response = f"{RED}Invalid command or not in search mode.{RESET}"
+
+    print(f"{BLUE}[Server] Sending response to {client_address}: {response}{RESET}")
+    return response
 
 def main():
-    receive_thread = threading.Thread(target = handle_message)
-    receive_thread.start()
-    receive_thread.join()
-    tracker_socket.close()
+    server = Server(host='10.1.1.2', port=4444, message_handler=handle_message)
+    server.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        server.exit()
 
 if __name__ == "__main__":
     main()
-

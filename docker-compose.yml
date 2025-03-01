@@ -1,34 +1,45 @@
-version: '3.8'
-
 services:
-
-  # ----- ENDER SERVICE -----
-  ender-service:
+  # ----- OPERATOR (CLIENT) MACHINE -----
+  operator:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ender-service
-    hostname: ender
+    image: ender  # Explicitly tag the built image
+    container_name: operator
+    hostname: operator
     stdin_open: true
     tty: true
     ports:
-      - "5000:5000" # Example Ender-specific service port
+      - "80:80"
+      - "4444:4444"
+      - "8080:8080"
+      - "55552:55552"
+      - "55553:55553"
     environment:
-      - EXAMPLE_VAR=value
+      - RPCPASS=memes
+      - RPCPORT=1337
+    volumes:
+      - ./src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
     networks:
-      ender-net:
-        ipv4_address: 10.2.2.4
-      eshu_localnet:
-        ipv4_address: 10.1.1.4
+      localnet:
+        ipv4_address: 10.1.1.2
 
-# ----- NETWORK -----
+
+  # ----- VICTIM MACHINES -----
+  metasploitable2:
+    image: tleemcjr/metasploitable2
+    container_name: metasploitable2
+    hostname: metasploitable2
+    entrypoint: bash -c '/bin/services.sh && tail -f /dev/null'
+    command: sleep infinite
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.3
 
 networks:
-  ender-net:
+  localnet:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.2.2.0/24
-          gateway: 10.2.2.2
-  eshu_localnet:
-    external: true
+        - subnet: 10.1.1.0/24
+          gateway: 10.1.1.1
