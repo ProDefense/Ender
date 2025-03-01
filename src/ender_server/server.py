@@ -7,7 +7,7 @@ from socket_threading import Server
 import json
 from pymetasploit3.msfrpc import MsfRpcClient
 
-from socket_threading import RED, BLUE, GREEN, RESET
+from socket_threading import RED, BLUE, GREEN, YELLOW, RESET
 
 MSF_HOST = "10.1.1.2"
 MSF_PORT = 1337
@@ -25,7 +25,7 @@ def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
             print(f"{GREEN}[+] Successfully connected to MSF Server!{RESET}")
             return msf_client
         except Exception as e:
-            print(f"{RED}[!] Failed to connect to MSF Server: {e}, RETRYING ({attempt + 1}/{max_retries}){RESET}")
+            print(f"{YELLOW}[!] Failed to connect to MSF Server: {e}, RETRYING ({attempt + 1}/{max_retries}){RESET}")
             time.sleep(retry_delay)
     print(f"{RED}[!] Max retries reached. Could not connect to MSF Server.{RESET}")
     return None

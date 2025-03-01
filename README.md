@@ -104,7 +104,7 @@ Check the sliver-client terminal to see the beacon connection.
 #### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
 In the third terminal with the http server, ctrl-c once the GET request is made and run the following in workspace#:
 ```bash 
-python eshuCLP/main.py
+python src/main.py
 ```
 
 #### Clean Up
