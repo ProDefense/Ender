@@ -23,12 +23,35 @@ def main():
     # Simple CLI to send messages and wait for responses
     try:
         while client.running:
-            message = input(f"{GREEN}Enter message (or 'quit' to exit): {RESET}")
+            message = input(f"{GREEN}Enter message (or 'quit' to exit): {RESET}").strip()
+
+            if not message:
+                print(f"{RED}[Client] Empty command. Please enter a valid command.{RESET}")
+                continue
+
             if message.lower() == 'quit':
                 client.stop()
                 break
-            response = client.send_and_wait(message)
-            # Response is printed in receive_messages, but you can reuse it here if needed
+
+            # Ensure Meterpreter commands are formatted correctly
+            elif message.startswith("meterpreter"):
+                parts = message.split(maxsplit=2)
+                if len(parts) < 3:
+                    print(f"{RED}[Client] Usage: meterpreter <session_id> <command>{RESET}")
+                else:
+                    session_id, cmd = parts[1], parts[2]
+                    response = client.send_and_wait(f"meterpreter {session_id} {cmd}")
+                    print(response)
+
+            else:
+                response = client.send_and_wait(message)
+                if "Please enter" in response:
+                    while "Please enter" in response:
+                        param_prompt = response.split("\n")[-1]  # Get last line for input
+                        user_input = input(param_prompt + " ")
+                        response = client.send_and_wait(user_input)
+                print(response)
+
     except KeyboardInterrupt:
         client.stop()
     finally:
