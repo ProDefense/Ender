@@ -31,6 +31,9 @@ RUN pip install pymetasploit3
 # Install pymetasploit3
 RUN pip install pymetasploit3
 
+# Install pexpect
+RUN pip install pexpect
+
 # Install Metasploit
 RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
     cd /opt/metasploit-framework && \

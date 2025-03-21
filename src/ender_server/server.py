@@ -3,18 +3,35 @@ import time
 import socket
 import threading
 import subprocess
+import pexpect
 from socket_threading import Server
 import json
 from pymetasploit3.msfrpc import MsfRpcClient
 
 from socket_threading import RED, BLUE, GREEN, YELLOW, RESET
 
-MSF_HOST = "10.1.1.2"
-MSF_PORT = 1337
-MSF_PASSWORD = "memes"
-RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
+sliverInstance = None
 
-msfInstance = None
+def create_sliver_config(operator_name, lhost):
+    """Create Sliver Config file"""
+    print(f"{GREEN}=============== Create Sliver Config ==============={RESET}")
+    try:
+        sliver = pexpect.spawn("sliver-server")
+        sliver.expect("[server]", timeout=30)
+
+        new_operator_cmd = f"new-operator --name {operator_name} --lhost {lhost}"
+        multiplayer_cmd = "multiplayer"
+
+        sliver.sendline(new_operator_cmd)
+        sliver.expect("[server]", timeout=30)
+
+        sliver.sendline(multiplayer_cmd)
+        sliver.expect("[server]", timeout=30)
+        print(f"{GREEN}[+] Successfully created Sliver Config file{RESET}")
+        return True
+    except Exception as e:
+        print(f"{RED}[!] Failed to create Sliver Config file: {e}")
+        return False
 
 def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
     """Connect to the MSF server with retries."""
@@ -179,10 +196,22 @@ def handle_message(data, client_address):
     client_state = handle_message.search_state.setdefault(client_address, 
                                                           {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None})
 
-    if command == "connect":
-        response = f"{BLUE}[+] Connecting to MSF...{RESET}"
-        msfInstance = connect_msf()
-        response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
+    if command == "create_config":
+        if len(options) < 2:
+            response = f"{RED}[!] Invalid Sliver config creation command: create_config [operator_name] [lhost]{RESET}"
+        else: 
+            response = f"{BLUE}[+] Creating Sliver Config...{RESET}"
+            config = create_sliver_config(options[1], options[2])
+            if config:
+                response = f"{BLUE}[+] Created Sliver Config!{RESET}"
+                client_state['config'] = True
+            else:
+                response = f"{RED}[!] Sliver config creation failed!{RESET}"
+
+    elif command == "connect":
+        response = f"{BLUE}[+] Connecting to Sliver...{RESET}"
+        sliverInstance = connect_sliver()
+        response = f"{BLUE}[+] Connected to Sliver!{RESET}" if sliverInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
         client_state['in_search'] = False  # Reset search state on connect
         client_state['in_run'] = False
     
