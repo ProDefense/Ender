@@ -49,13 +49,16 @@ RUN pip install sliver-py
 
 # Sliver Client and Sliver Server
 
-RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux
+RUN mkdir -p /opt/sliver && \ 
+    wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux -O /opt/sliver/sliver-client && \
+    wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-server_linux -O /opt/sliver/sliver-server && \
+    chmod +x /opt/sliver/sliver-client /opt/sliver/sliver-server
 
-RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-server_linux
+#    RUN chmod +x sliver-client_linux sliver-server_linux && \
+#    mv sliver-client_linux /usr/local/bin/sliver-client && \
+#    mv sliver-server_linux /usr/local/bin/sliver-server
 
-RUN chmod +x sliver-client_linux sliver-server_linux && \
-    mv sliver-client_linux /usr/local/bin/sliver-client && \
-    mv sliver-server_linux /usr/local/bin/sliver-server
+ENV PATH="/opt/sliver:$PATH"
 
 # Set working directory for Ender
 WORKDIR /workspace/enderCLI

