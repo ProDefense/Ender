@@ -316,6 +316,12 @@ def handle_message(data, client_address):
         The user is responding to a previously asked param. 
         We only prompt for the next param in ALWAYS_PROMPT_OPTS. 
         """
+        exploit = msfInstance.modules.use(client_state['module_type'], client_state['module_name'])
+        if not exploit:
+            response = f"{RED}[!] Could not load {client_state['module_type']} module: {client_state['module_name']}{RESET}"
+            client_state['in_run'] = False
+            return response
+    
         if not client_state['exploit_options']:
             response = f"{RED}[!] No more options to fill.{RESET}"
             client_state['in_run'] = False
@@ -323,9 +329,8 @@ def handle_message(data, client_address):
             current_opt = client_state['exploit_options'][0]
             param_name = current_opt['name']
             param_value = (data or current_opt['default'])  # Use user input or default
-
-            # Set the user parameter
-            client_state['user_params'][param_name] = param_value
+            parsed_value = parse_param_value(exploit._info['options'][param_name], param_value)
+            client_state['user_params'][param_name] = parsed_value
             client_state['exploit_options'].pop(0)
 
             if len(client_state['exploit_options']) == 0:
