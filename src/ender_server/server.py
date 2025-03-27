@@ -402,6 +402,14 @@ def handle_message(data, client_address):
                 response = f"{GREEN}Active Jobs:\\n{job_list}{RESET}"
             else:
                 response = f"{RED}No active jobs.{RESET}"
+
+    elif command == "quit":
+        response = f"{GREEN}[+] Server shutting down as requested by {client_address}{RESET}"
+        
+        if hasattr(server, 'stop'):  # We'll define this in the Server class
+            server.stop()
+        
+        return response
             
     else:
         response = f"{RED}Invalid command or not in search mode.{RESET}"
@@ -410,6 +418,7 @@ def handle_message(data, client_address):
     return response
 
 def main():
+    global server
     server = Server(host='10.1.1.2', port=4444, message_handler=handle_message)
     server.start()
     try:
