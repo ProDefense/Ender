@@ -16,17 +16,20 @@ def create_sliver_config(operator_name, lhost):
     """Create Sliver Config file"""
     print(f"{GREEN}=============== Create Sliver Config ==============={RESET}")
     try:
-        sliver = pexpect.spawn("sliver-server")
+        sliver = pexpect.spawn("sliver-server", encoding = 'utf-8')
         sliver.expect("[server]", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
 
         new_operator_cmd = f"new-operator --name {operator_name} --lhost {lhost}"
         multiplayer_cmd = "multiplayer"
 
         sliver.sendline(new_operator_cmd)
         sliver.expect("[server]", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
 
         sliver.sendline(multiplayer_cmd)
         sliver.expect("[server]", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
         print(f"{GREEN}[+] Successfully created Sliver Config file{RESET}")
         return True
     except Exception as e:
