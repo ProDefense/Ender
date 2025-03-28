@@ -270,21 +270,30 @@ def handle_message(data, client_address):
                 if not exploit:
                     response = f"{RED}[!] Could not load {module_type} module: {module_name}{RESET}"
                 else:
-                    ALWAYS_PROMPT_OPTS = {"RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS", "LHOST", "LPORT"}
+                    # Dynamically set prompts based on module type
+                    if module_type == "exploit":
+                        # Enforce parameter order: PAYLOAD first, then LHOST/LPORT
+                        ALWAYS_PROMPT_OPTS = ["RHOSTS", "RPORT", "PAYLOAD", "LHOST", "LPORT"]
+                        # Force-add payload parameters to exploit options if missing
+                        for opt in ["PAYLOAD", "LHOST", "LPORT"]:
+                            if opt not in exploit._info['options']:
+                                exploit._info['options'][opt] = {"type": "string", "required": True, "default": None}
+                    elif module_type == "auxiliary":
+                        ALWAYS_PROMPT_OPTS = ["RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS"]
+                    else:
+                        ALWAYS_PROMPT_OPTS = []
 
                     exploit_info = exploit._info.get('options', {})
                     module_options = []
 
-                    # 1. For each known param, decide whether to prompt or to skip
-                    for opt_name, opt_data in exploit_info.items():
-                        default_val = opt_data.get('default', None)
-                        
-                        # If it's in our short list, we plan to prompt
-                        if opt_name in ALWAYS_PROMPT_OPTS:
+                    # Process parameters IN ORDER to ensure PAYLOAD is set first
+                    for opt_name in ALWAYS_PROMPT_OPTS:
+                        if opt_name in exploit_info:
+                            opt_data = exploit_info[opt_name]
+                            default_val = opt_data.get('default', None)
                             prompt_msg = f"Please enter {opt_name}"
                             if default_val is not None:
                                 prompt_msg += f" (default: {default_val})"
-
                             module_options.append({
                                 'name': opt_name,
                                 'default': default_val,
@@ -310,7 +319,6 @@ def handle_message(data, client_address):
                         client_state['in_run'] = False
                     else:
                         response = f"{BLUE}{module_options[0]['prompt']}: {RESET}"
-
     elif client_state['in_run']:
         """
         The user is responding to a previously asked param. 
