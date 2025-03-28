@@ -171,15 +171,18 @@ def run_msf_exploit(mtype, mname, user_params):
     if not exploit:
         return f"{RED}[!] Could not load {mtype} module: {mname}{RESET}"
 
-    # Only set the user_params we collected in handle_message
+    # Set exploit parameters
     for param_key, param_value in user_params.items():
-        exploit[param_key] = param_value
+        if param_key in ["PAYLOAD", "LHOST", "LPORT"]:
+            # Explicitly handle payload configuration
+            exploit[param_key] = param_value
+        elif param_key in exploit.options:
+            exploit[param_key] = param_value
 
     print(f"{GREEN}Running exploit: {mname}{RESET}")
     result = exploit.execute()
     print(f"{BLUE}Exploit Result: {result}{RESET}")
     return result
-
 #####################
 # Validate Module 
 #####################
@@ -272,14 +275,10 @@ def handle_message(data, client_address):
                 else:
                     # Dynamically set prompts based on module type
                     if module_type == "exploit":
-                        # Enforce parameter order: PAYLOAD first, then LHOST/LPORT
+                        # Always prompt for payload parameters
                         ALWAYS_PROMPT_OPTS = ["RHOSTS", "RPORT", "PAYLOAD", "LHOST", "LPORT"]
-                        # Force-add payload parameters to exploit options if missing
-                        for opt in ["PAYLOAD", "LHOST", "LPORT"]:
-                            if opt not in exploit._info['options']:
-                                exploit._info['options'][opt] = {"type": "string", "required": True, "default": None}
                     elif module_type == "auxiliary":
-                        ALWAYS_PROMPT_OPTS = ["RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS"]
+                        ALWAYS_PROMPT_OPTS = ["USERNAME", "PASSWORD", "RHOSTS", "RPORT", "THREADS"]
                     else:
                         ALWAYS_PROMPT_OPTS = []
 
@@ -288,8 +287,8 @@ def handle_message(data, client_address):
 
                     # Process parameters IN ORDER to ensure PAYLOAD is set first
                     for opt_name in ALWAYS_PROMPT_OPTS:
-                        if opt_name in exploit_info:
-                            opt_data = exploit_info[opt_name]
+                        if opt_name in exploit_info or (module_type == "exploit" and opt_name in ["PAYLOAD", "LHOST", "LPORT"]):
+                            opt_data = exploit_info.get(opt_name, {"type": "string", "required": True, "default": None})
                             default_val = opt_data.get('default', None)
                             prompt_msg = f"Please enter {opt_name}"
                             if default_val is not None:
@@ -299,11 +298,6 @@ def handle_message(data, client_address):
                                 'default': default_val,
                                 'prompt': prompt_msg
                             })
-                        else:
-                            # If there's a default, set it silently
-                            if default_val is not None:
-                                exploit[opt_name] = default_val
-                            # If it's required and no default is set, we do nothing—exploit might fail.
 
                     # 2. Prepare the run state for prompting
                     client_state['in_run'] = True
