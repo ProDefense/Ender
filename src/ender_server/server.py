@@ -14,6 +14,7 @@ MSF_PORT = 1337
 MSF_PASSWORD = "memes"
 RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
 
+server = None
 msfInstance = None
 
 def run_meterpreter_exploit(target_ip):
@@ -405,9 +406,10 @@ def handle_message(data, client_address):
 
     elif command == "quit":
         response = f"{GREEN}[+] Server shutting down as requested by {client_address}{RESET}"
-        
-        if hasattr(server, 'stop'):  # We'll define this in the Server class
-            server.stop()
+        if server is not None:
+            server.exit()
+        else:
+            response = f"{RED}[!] Server not initialized {RESET}"
         
         return response
             
@@ -422,7 +424,7 @@ def main():
     server = Server(host='10.1.1.2', port=4444, message_handler=handle_message)
     server.start()
     try:
-        while True:
+        while server.running:
             time.sleep(1)
     except KeyboardInterrupt:
         server.exit()

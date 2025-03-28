@@ -28,9 +28,6 @@ RUN pip install pymetasploit3
 # Set the default shell to Bash
 #SHELL ["/bin/bash", "-c"]
 
-# Install pymetasploit3
-RUN pip install pymetasploit3
-
 # Install Metasploit
 RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
     cd /opt/metasploit-framework && \
@@ -72,7 +69,7 @@ COPY ./start.sh /workspace/enderCLI/start.sh
 RUN chmod +x /workspace/enderCLI/start.sh
 
 # To fix SSH issues 
-RUN GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=True pip install --no-binary :all: --force-reinstall grpcio
+RUN GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=True pip install grpcio
 
 # Install Ender-specific dependencies (if any)
 RUN python3 -m pip install --upgrade pip setuptools

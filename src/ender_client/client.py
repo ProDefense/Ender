@@ -30,8 +30,9 @@ def main():
                 continue
 
             if message.lower() == 'quit':
-                client.stop()
-                break
+                    client.send_message(message)
+                    client.stop()
+                    break
 
             # Ensure Meterpreter commands are formatted correctly
             elif message.startswith("meterpreter"):
@@ -50,7 +51,7 @@ def main():
                         param_prompt = response.split("\n")[-1]  # Get last line for input
                         user_input = input(param_prompt + " ")
                         response = client.send_and_wait(user_input)
-                print(response)
+                # print(response)
 
     except KeyboardInterrupt:
         client.stop()
