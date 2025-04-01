@@ -17,18 +17,18 @@ def create_sliver_config(operator_name, lhost):
     print(f"{GREEN}=============== Create Sliver Config ==============={RESET}")
     try:
         sliver = pexpect.spawn("sliver-server", encoding = 'utf-8')
-        sliver.expect("[server]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
 
         new_operator_cmd = f"new-operator --name {operator_name} --lhost {lhost}"
         multiplayer_cmd = "multiplayer"
 
         sliver.sendline(new_operator_cmd)
-        sliver.expect("[server]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
 
         sliver.sendline(multiplayer_cmd)
-        sliver.expect("[server]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
         print(f"{GREEN}[+] Successfully created Sliver Config file{RESET}")
         return True
@@ -44,18 +44,18 @@ def create_sliver_beacon(operator_name, lhost, seconds, jitter, http, os, arch, 
         subprocess.run(import_config_file_command, shell = True, check = True)
         
         sliver = pexpect.spawn("sliver-client", encoding = 'utf-8')
-        sliver.expect("[client]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
 
         beacon_creation_command = f"generate beacon --seconds {seconds} --jitter {jitter} --http {http} --os {os} --arch {arch} --name {beacon_name}"
         http_command = "http"
 
         sliver.sendline(beacon_creation_command)
-        sliver.expect("[client]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
 
         sliver.sendline(http_command)
-        sliver.expect("[client]", timeout=30)
+        sliver.expect(r"sliver", timeout=30)
         print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
         print(f"{GREEN}[+] Successfully created Sliver beacon{RESET}")
         return True
