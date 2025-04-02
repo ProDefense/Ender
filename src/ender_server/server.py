@@ -254,9 +254,9 @@ def handle_message(data, client_address):
                 response = f"{RED}[!] Sliver beacon creation failed!{RESET}"
 
     elif command == "connect":
-        response = f"{BLUE}[+] Connecting to Sliver...{RESET}"
-        sliverInstance = connect_sliver()
-        response = f"{BLUE}[+] Connected to Sliver!{RESET}" if sliverInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
+        response = f"{BLUE}[+] Connecting to MSF...{RESET}"
+        msfInstance = connect_msf()
+        response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
         client_state['in_search'] = False  # Reset search state on connect
         client_state['in_run'] = False
     
