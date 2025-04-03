@@ -10,6 +10,11 @@ from pymetasploit3.msfrpc import MsfRpcClient
 
 from socket_threading import RED, BLUE, GREEN, YELLOW, RESET
 
+MSF_HOST = "10.1.1.2"
+MSF_PORT = 1337
+MSF_PASSWORD = "memes"
+RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
+
 server = None
 msfInstance = None
 
