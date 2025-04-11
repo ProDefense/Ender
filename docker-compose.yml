@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ender  # Explicitly tag the built image
+    image: ender
     container_name: operator
     hostname: operator
     stdin_open: true
@@ -21,12 +21,11 @@ services:
     volumes:
       - ./src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
       - sliver-data:/opt/sliver
-      - sliver-server-conf:/root/.sliver # new volume for server configs
-      - sliver-client-conf:/root/.sliver-client  # new volume for client configs
+      - sliver-server-conf:/root/.sliver
+      - sliver-client-conf:/root/.sliver-client
     networks:
       localnet:
         ipv4_address: 10.1.1.2
-
 
   # ----- VICTIM MACHINES -----
   metasploitable2:
@@ -39,6 +38,31 @@ services:
       localnet:
         ipv4_address: 10.1.1.3
 
+  windows:
+    image: dockurr/windows
+    container_name: windows
+    hostname: windows
+    environment:
+      - VERSION=10 # Windows 10 Pro
+      - RAM_SIZE=4G
+      - CPU_CORES=2
+      - USERNAME=Docker
+      - PASSWORD=admin
+      - DISK_SIZE=64G
+    ports:
+      - "8006:8006" # Web interface
+      - "3389:3389" # RDP
+    volumes:
+      - windows-storage:/storage
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    stop_grace_period: 2m
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.4
+
 networks:
   localnet:
     driver: bridge
@@ -48,6 +72,7 @@ networks:
           gateway: 10.1.1.1
 
 volumes:
-  sliver-data: # named volume
-  sliver-server-conf: # server conf file for sliver persistence
-  sliver-client-conf: # client conf file for sliver persistence
+  sliver-data:
+  sliver-server-conf:
+  sliver-client-conf:
+  windows-storage:
