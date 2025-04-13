@@ -25,6 +25,9 @@ services:
     networks:
       localnet:
         ipv4_address: 10.1.1.2
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
 
   metasploitable2:
     image: tleemcjr/metasploitable2
@@ -35,29 +38,6 @@ services:
     networks:
       localnet:
         ipv4_address: 10.1.1.3
-
-  windows:
-    image: dockurr/windows
-    container_name: windows
-    hostname: windows
-    environment:
-      - VERSION=7e # Windows 7 Enterprise (lighter than Windows 10)
-      - RAM_SIZE=2G # Reduced for VM
-      - CPU_CORES=1 # Reduced for VM
-      - USERNAME=Docker
-      - PASSWORD=admin
-      - DISK_SIZE=32G # Reduced to save space
-      - ARGUMENTS=-accel tcg,thread=multi -netdev user,id=net0 -device e1000,netdev=net0 # TCG + user-mode networking
-    ports:
-      - "8007:8006" # Web interface (changed to avoid conflicts)
-      - "3389:3389" # RDP
-    volumes:
-      - windows-storage:/storage
-    stop_grace_period: 5m # Increased for clean shutdown
-    restart: unless-stopped # Auto-restart on crash
-    networks:
-      localnet:
-        ipv4_address: 10.1.1.4
 
 networks:
   localnet:
@@ -71,4 +51,3 @@ volumes:
   sliver-data:
   sliver-server-conf:
   sliver-client-conf:
-  windows-storage:
