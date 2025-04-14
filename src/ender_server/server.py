@@ -121,12 +121,44 @@ def interact_meterpreter(session_id, command):
         return f"{RED}[!] Session {session_id} is a {stype} session, not Meterpreter.{RESET}"
 
     sess_obj = msfInstance.sessions.session(session_id)
-    try:
-        output = sess_obj.run_with_output(command)
-        return f"{GREEN}{output}{RESET}"
-    except Exception as e:
-        return f"{RED}[!] Error in Meterpreter command: {e}{RESET}"
 
+    if command.startswith("upload "):
+        parts = command.split(maxsplit=2) 
+        if len(parts) != 3:
+            return f"{RED}Usage: meterpreter <id> upload <local_path> <remote_path>{RESET}"
+        local_path, remote_path = parts[1], parts[2]
+        try:
+            sess_obj.upload(local_path, remote_path)
+            return f"{GREEN}[+] Uploaded {local_path} to {remote_path}{RESET}"
+        except Exception as e:
+            return f"{RED}[!] Upload failed: {e}{RESET}"
+
+    elif command.startswith("download "):
+        parts = command.split(maxsplit=2)
+        if len(parts) != 3:
+            return f"{RED}Usage: meterpreter <id> download <remote_path> <local_path>{RESET}"
+        remote_path, local_path = parts[1], parts[2]
+        try:
+            sess_obj.download(remote_path, local_path)
+            return f"{GREEN}[+] Downloaded {remote_path} to {local_path}{RESET}"
+        except Exception as e:
+            return f"{RED}[!] Download failed: {e}{RESET}"
+
+    elif command.strip() == "shell":
+        try:
+            sess_obj.shell_write("\n")
+            time.sleep(1)
+            output = sess_obj.shell_read()
+            return f"{GREEN}Shell opened. Enter commands directly:\n{output}{RESET}"
+        except Exception as e:
+            return f"{RED}[!] Failed to open shell: {e}{RESET}"
+
+    else:
+        try:
+            output = sess_obj.run_with_output(command)
+            return f"{GREEN}{output}{RESET}"
+        except Exception as e:
+            return f"{RED}[!] Error in Meterpreter command: {e}{RESET}"
 
 ##############################
 # Searching
@@ -213,37 +245,28 @@ def run_msf_exploit(mtype, mname, user_params):
     except Exception as e:
         return f"{RED}[!] Failed to load module: {str(e)}{RESET}"
 
-    # Set payload using both direct assignment and option setting
+    # Payload validation for reverse shells
     if mtype == "exploit" and "PAYLOAD" in user_params:
-        try:
-            # First try proper payload assignment
-            mod.payload = user_params["PAYLOAD"]
-        except Exception as e:
-            # Fallback to manual option setting
-            if "PAYLOAD" in mod.options:
-                mod["PAYLOAD"] = user_params["PAYLOAD"]
-            else:
-                return f"{RED}[!] Invalid payload for module: {str(e)}{RESET}"
+        payload = user_params["PAYLOAD"]
+        if "reverse" in payload:
+            missing = [opt for opt in ["LHOST", "LPORT"] if opt not in user_params]
+            if missing:
+                return f"{RED}[!] Reverse payload requires: {', '.join(missing)}{RESET}"
 
-    # Set required options with validation
-    required_options = {
-        "RHOSTS": "Target host(s)",
-        "LHOST": "Listener host",
-        "LPORT": "Listener port"
-    }
-
-    for opt, desc in required_options.items():
-        if opt in mod.options and opt not in user_params:
-            return f"{RED}[!] Missing required option: {opt} ({desc}){RESET}"
-        if opt in user_params:
-            mod[opt] = user_params[opt]
-
-    # Execute with better error handling
     try:
-        print(f"{GREEN}Executing {mtype}/{mname} with options:{RESET}")
-        for k, v in user_params.items():
-            print(f"  {YELLOW}{k}: {v}{RESET}")
-            
+        mod.payload = user_params.get("PAYLOAD", "")
+    except:
+        pass  # Fallback to manual option setting
+
+    required_options = ["RHOSTS", "LHOST", "LPORT"]
+    for opt in required_options:
+        if opt in mod.options and opt not in user_params:
+            return f"{RED}[!] Missing required option: {opt}{RESET}"
+
+    for k, v in user_params.items():
+        mod[k] = v
+
+    try:
         result = mod.execute()
         return json.dumps(result)
     except Exception as e:
@@ -269,15 +292,32 @@ def handle_message(data, client_address):
             'exploit_options': [],
             'user_params': {},
             'module_type': None,
-            'module_name': None
+            'module_name': None,
+            'shell_session': None
         }
     )
+
+    # Handle active shell sessions first
+    if client_state['shell_session'] is not None:
+        try:
+            sid = client_state['shell_session']
+            sess = msfInstance.sessions.session(sid)
+            sess.shell_write(data + "\n")
+            time.sleep(1)
+            output = sess.shell_read()
+            if "exit" in data.lower():
+                client_state['shell_session'] = None
+                output += "\n[+] Exited shell session"
+            return f"{GREEN}{output}{RESET}"
+        except Exception as e:
+            client_state['shell_session'] = None
+            return f"{RED}[!] Shell error: {e}{RESET}"
 
     parts = data.split(maxsplit=2)
     if not parts:
         return f"{RED}Invalid command.{RESET}"
 
-    command = parts[0].lower()
+    command = parts[0].lower() if parts else ""
 
     ###################################
     # connect
@@ -471,14 +511,26 @@ def handle_message(data, client_address):
         parsed_val = parse_param_value(msfopt, user_input)
         client_state['user_params'][param_name] = parsed_val
 
-        # If param_name is PAYLOAD and user chooses e.g. cmd/unix/bind => remove LHOST,LPORT
-        if param_name.upper() == "PAYLOAD" and parsed_val:
-            pl = str(parsed_val).lower()
-            if pl in ["cmd/unix/bind","cmd/unix/interact"]:
-                client_state['exploit_options'] = [
-                    x for x in client_state['exploit_options']
-                    if x['name'] not in ("LHOST","LPORT") or x['name']==param_name
-                ]
+        # Check if the current parameter is PAYLOAD and we just set it
+        if param_name == "PAYLOAD" and parsed_val:
+            try:
+                payload_mod = msfInstance.modules.use('payload', parsed_val)
+                payload_option_details = payload_mod._info.get('options', {})  # Get list of option names
+                
+                for opt_name, opt_details in payload_option_details.items():
+                    if opt_details.get('required', False):
+                        if opt_name not in mod_obj.options and opt_name not in client_state['user_params']:
+                            prompt_msg = f"Please enter {opt_name}"
+                            if 'default' in opt_details:
+                                prompt_msg += f" (default: {opt_details['default']})"
+                            client_state['exploit_options'].insert(0, {
+                                "name": opt_name,
+                                "default": opt_details.get('default', None),
+                                "prompt": prompt_msg
+                            })
+            except Exception as e:
+                client_state['in_run'] = False
+                return f"{RED}[!] Error loading payload: {str(e)}{RESET}"
 
         client_state['exploit_options'].pop(0)
         if not client_state['exploit_options']:
@@ -503,7 +555,7 @@ def handle_message(data, client_address):
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
             
-        sessions = msfInstance.sessions.list
+        sessions = msfInstance.sessions.list  # Forces refresh
         if not sessions:
             return f"{YELLOW}[!] No active sessions detected{RESET}"
             
@@ -527,9 +579,14 @@ def handle_message(data, client_address):
         tokens = data.split(maxsplit=2)
         if len(tokens) < 3:
             return f"{RED}Usage: meterpreter <session_id> <command>{RESET}"
+        
         sid = tokens[1]
-        cmd_line = tokens[2]
-        return interact_meterpreter(sid, cmd_line)
+        cmd = tokens[2]
+        
+        if cmd.strip() == "shell":
+            client_state['shell_session'] = sid
+            
+        return interact_meterpreter(sid, cmd)
 
     ###################################
     # jobs
