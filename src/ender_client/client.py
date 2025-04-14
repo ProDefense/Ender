@@ -1,4 +1,5 @@
 import socket
+import subprocess
 import threading
 from socket_threading import Client
 from socket_threading import GREEN, CYAN, RED, RESET
@@ -30,8 +31,9 @@ def main():
                 continue
 
             if message.lower() == 'quit':
-                client.stop()
-                break
+                    client.send_message(message)
+                    client.stop()
+                    break
 
             # Ensure Meterpreter commands are formatted correctly
             elif message.startswith("meterpreter"):
@@ -42,6 +44,14 @@ def main():
                     session_id, cmd = parts[1], parts[2]
                     response = client.send_and_wait(f"meterpreter {session_id} {cmd}")
                     print(response)
+            # Alex End
+            elif message.lower() == "sliver_sessions":
+                try:
+                    output = subprocess.check_output("sliver-client sessions", shell=True, text=True)
+                    print(f"{GREEN}[Sliver Sessions]\n{output}{RESET}")
+                except Exception as e:
+                    print(f"{RED}[Client] Error fetching Sliver sessions: {e}{RESET}")
+            # Alex New
 
             else:
                 response = client.send_and_wait(message)
@@ -50,7 +60,7 @@ def main():
                         param_prompt = response.split("\n")[-1]  # Get last line for input
                         user_input = input(param_prompt + " ")
                         response = client.send_and_wait(user_input)
-                print(response)
+                # print(response)
 
     except KeyboardInterrupt:
         client.stop()

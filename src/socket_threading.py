@@ -48,8 +48,9 @@ class Server:
     def exit(self):
         self.running = False
         self.server_socket.close()
-        print(f"{GREEN}[+] [Server] Server stopped{RESET}")
-
+        print(f"{BLUE}[+] [Server] Server stopped{RESET}")
+        sys.exit(1)
+        
 class Client:
     def __init__(self, host='10.1.1.2', port= 4444):
         self.host = host

