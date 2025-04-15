@@ -84,7 +84,7 @@ In second terminal (Sliver Client):
 ```bash
 docker exec -it operator /bin/bash
 root@operator:/workspace/enderCLI# python ender_client/client.py
-Enter message (or 'quit' to exit): create_beacon operator1 10.1.1.2 5 0 10.1.1.2 linux amd64 testbeacon
+Enter message (or 'quit' to exit): create_beacon operator1 10.1.1.2 5 0 10.1.1.2 linux amd64 testbeacon (option "shellcode" optional)
 ```
 
 Go back to the first terminal to monitor the Sliver beacon creation and verify that beacon is created
