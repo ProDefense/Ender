@@ -403,12 +403,18 @@ def validate_module_type(module_type, module_name):
     if msfInstance is None:
         return False, f"{RED}[-] Not connected to Metasploit.{RESET}"
 
-    if module_type == "exploit":
-        if module_name not in msfInstance.modules.exploits:
-            return False, f"{RED}{module_name} is NOT an exploit. Try: run auxiliary {module_name}{RESET}"
-    elif module_type == "auxiliary":
-        if module_name not in msfInstance.modules.auxiliary:
-            return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}{RESET}"
+    module_lists = {
+        "exploit": msfInstance.modules.exploits,
+        "auxiliary": msfInstance.modules.auxiliary,
+        "post": msfInstance.modules.post
+    }
+
+    if module_type not in module_lists:
+        return False, f"{RED}Unknown module type {module_type}{RESET}"
+
+    if module_name not in module_lists[module_type]:
+        return False, f"{RED}{module_name} is NOT a valid {module_type} module{RESET}"
+
     return True, None
 
 #####################
@@ -532,7 +538,15 @@ def handle_message(data, client_address):
             return err
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
-
+        
+        extra_params = {}
+        for tok in options[3:]:
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                # look up metadata so we can cast correctly
+                opt_def = msfInstance.modules.use(module_type, module_name)._info["options"].get(k, {})
+                extra_params[k] = parse_param_value(opt_def, v)
+                
         mod_obj  = msfInstance.modules.use(module_type, module_name)
         prompts  = []
 
@@ -551,7 +565,8 @@ def handle_message(data, client_address):
                     default = info.get("default")
                     msg = f"Please enter {opt}" + (f" (default: {default})" if default is not None else "")
                     prompts.append({"name": opt,"default": default,"prompt": msg})
-
+        elif module_type == "post":
+            base_order = ()        
         # build prompts for auxiliary modules
         else:  # auxiliary
             for opt in ("USERNAME","PASSWORD","RHOSTS","RPORT","THREADS"):
@@ -564,7 +579,12 @@ def handle_message(data, client_address):
 
         # safety: if no prompts needed, execute immediately
         if not prompts:
-            return run_msf_exploit(module_type, module_name, {})
+            return run_msf_exploit(
+                module_type,
+                module_name,
+                extra_params,          # ← pass the inline NAME=value pairs
+                action=action
+            )
 
         client_state.update({
             "in_run": True,
@@ -572,7 +592,8 @@ def handle_message(data, client_address):
             "user_params": {},
             "module_type": module_type,
             "module_name": module_name,
-            "action": action
+            "action": action,
+            'extra_params': extra_params
         })
         return f"{BLUE}{prompts[0]['prompt']}: {RESET}"
 
@@ -585,13 +606,16 @@ def handle_message(data, client_address):
         opt_def = mod._info["options"].get(pname, {})
         value   = parse_param_value(opt_def, data) or current.get("default")
         client_state["user_params"][pname] = value
-
+                        
         if not client_state["prompt_queue"]:        # all answers collected
+            merged = {**client_state.get("extra_params", {}),
+              **client_state["user_params"]}
+            
             client_state["in_run"] = False
             return run_msf_exploit(
                 client_state["module_type"],
                 client_state["module_name"],
-                client_state["user_params"],
+                merged,
                 action=client_state["action"]
             )
 
@@ -618,6 +642,7 @@ def handle_message(data, client_address):
     
     # ------------------------------------------------------------------ sessions
     if command == "sessions":
+        time.sleep(2)   # give new sessions a moment to appear
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
         sessions = msfInstance.sessions.list   # refresh
@@ -634,19 +659,44 @@ def handle_message(data, client_address):
             )
         return f"{GREEN}Active Sessions:\n{RESET}" + "\n\n".join(lines)
 
+    # ------------------------------------------------------------------ shell <id> <command>
+    if command.startswith("shell"):
+        parts = data.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            return f"{RED}Usage: shell <session_id> <command>{RESET}"
+        sid    = parts[1]          # keep as string
+        sh_cmd = parts[2]
+
+        # look up the session’s type from the cached list
+        meta = msfInstance.sessions.list.get(sid, {})
+        if meta.get("type") != "shell":
+            return f"{RED}Session {sid} is not a plain shell session.{RESET}"
+
+        try:
+            sess = msfInstance.sessions.session(sid)   # ShellSession object
+            sess.write(sh_cmd + "\n")
+            time.sleep(1)                              # give it a moment
+            output = sess.read()                       # read all available output
+            if isinstance(output, bytes):
+                output = output.decode(errors="ignore")
+            return f"{GREEN}{output.strip()}{RESET}"
+        except KeyError:
+            return f"{RED}Session ID {sid} does not exist.{RESET}"
+
     # ------------------------------------------------------------------ meterpreter
     if command.startswith("meterpreter"):
-        parts = command.split(maxsplit=2)
+        parts = data.strip().split(maxsplit=2)
         if len(parts) < 3:
             return f"{RED}Usage: meterpreter <session_id> <command>{RESET}"
-        session_id, meterpreter_command = parts[1], parts[2]
+        session_id          = parts[1]     # keep as string
+        meterpreter_command = parts[2]
         try:
-            session  = msfInstance.sessions.session(session_id)
-            output   = session.run_with_output(meterpreter_command)
+            session = msfInstance.sessions.session(session_id)
+            output  = session.run_with_output(meterpreter_command)
             return f"{GREEN}{output}{RESET}"
         except KeyError:
-            return f"{RED}Session ID {session_id} does not exist.{RESET}"
-    
+            return f"{RED}Session ID {session_id} does not exist.{RESET}"   
+         
     # ------------------------------------------------------------------ sliver helpers
     if command == "get-sliver-sessions":
         if sliver_client is None or not sliver_client.isalive():
