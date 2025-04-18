@@ -638,7 +638,8 @@ def handle_message(data, client_address):
                 client_state['beacon'] = True
             else:
                 response = f"{RED}[!] Sliver beacon creation failed!{RESET}"
-
+        print(f"{BLUE}[Server] Sending response to {client_address}: {response}{RESET}")
+        return response
     # ------------------------------------------------------------------ connect
     elif command == "connect":
         msfInstance = connect_msf()
@@ -856,6 +857,8 @@ def handle_message(data, client_address):
             time.sleep(2)
             print(sliver_client.read_nonblocking(size = 4096, timeout = 2))
             response = f"{GREEN}[+] Sliver Beacons Printed in Ender Server{RESET}"
+        print(f"{BLUE}[Server] Sending response to {client_address}: {response}{RESET}")
+        return response
             
     elif command == "sliver":
         if len(options) < 2:
@@ -863,6 +866,8 @@ def handle_message(data, client_address):
         else:
             beacon_id, sliver_command = options[1], options[2]
             response = interact_sliver(beacon_id, sliver_command)
+        print(f"{BLUE}[Server] Sending response to {client_address}: {response}{RESET}")
+        return response
     # Alex End
     
     elif command == "jobs":
