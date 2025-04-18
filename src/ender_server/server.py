@@ -23,6 +23,7 @@ SLIVER_PORT = 55552
 # ────────────── globals ────────────────────────────────────────────────────────
 server        = None
 msfInstance   = None
+sliver_server = None
 sliver_client = None
 # ───────────────────────────────────────────────────────────────────────────────
 ALWAYS_PROMPT_OPTS_EXPLOIT = {"RHOSTS", "RPORT", "USERNAME", "PASSWORD", "THREADS", "LHOST", "LPORT", "PAYLOAD"}
@@ -887,9 +888,7 @@ def handle_message(data, client_address):
     
     # ------------------------------------------------------------------ fallthrough
     return f"{RED}[!] Unrecognized or incomplete command.{RESET}"
-
-def create_sliver_beacon(operator, lhost, seconds, jitter, http, os, arch, name):
-    return generate_beacon(seconds, jitter, http, os, arch, name)
+    
 ##############################
 # MAIN
 ##############################
