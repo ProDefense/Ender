@@ -640,7 +640,7 @@ def handle_message(data, client_address):
                 response = f"{RED}[!] Sliver beacon creation failed!{RESET}"
 
     # ------------------------------------------------------------------ connect
-    if command == "connect":
+    elif command == "connect":
         msfInstance = connect_msf()
         client_state.update({'in_search': False, 'in_run': False})
         return (
@@ -650,7 +650,7 @@ def handle_message(data, client_address):
         )
     
     # ------------------------------------------------------------------ search
-    if command == "search":
+    elif command == "search":
         if len(parts) < 3:
             return f"{RED}[!] Usage: search [exploits|auxiliary] <keyword> [start_index]{RESET}"
 
@@ -674,7 +674,7 @@ def handle_message(data, client_address):
         return f"{RED}[!] Invalid module type. Use 'search exploits' or 'search auxiliary'{RESET}"
 
     # ------------------------------------------------------------------ run (initial call + prompt cycle)
-    if command == "run" and not client_state.get("in_run"):
+    elif command == "run" and not client_state.get("in_run"):
         # ── FIRST INVOCATION ────────────────────────────────────────────
         action = "exploit"
         if len(options) > 3 and options[3].lower() == "check":
@@ -773,7 +773,7 @@ def handle_message(data, client_address):
         return f"{BLUE}{nxt['prompt']}: {RESET}"
 
     # ------------------------------------------------------------------ next/prev/exit (search paging)
-    if command in ["next", "prev"] and client_state['in_search']:
+    elif command in ["next", "prev"] and client_state['in_search']:
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
         client_state['start'] += 20 if command == "next" else -20
@@ -786,12 +786,12 @@ def handle_message(data, client_address):
             return header + "\n" + "\n".join(results)
         return f"{BLUE}No more exploit modules available.{RESET}"
     
-    if command == "exit" and client_state['in_search']:
+    elif command == "exit" and client_state['in_search']:
         client_state.update({'in_search': False, 'keyword': None, 'start': 0})
         return f"{BLUE}Returned to normal CLI.{RESET}"
     
     # ------------------------------------------------------------------ sessions
-    if command == "sessions":
+    elif command == "sessions":
         time.sleep(2)   # give new sessions a moment to appear
         if msfInstance is None:
             return f"{RED}[-] Not connected to Metasploit.{RESET}"
@@ -810,7 +810,7 @@ def handle_message(data, client_address):
         return f"{GREEN}Active Sessions:\n{RESET}" + "\n\n".join(lines)
 
     # ------------------------------------------------------------------ shell <id> <command>
-    if command.startswith("shell"):
+    elif command.startswith("shell"):
         parts = data.strip().split(maxsplit=2)
         if len(parts) < 3:
             return f"{RED}Usage: shell <session_id> <command>{RESET}"
@@ -834,7 +834,7 @@ def handle_message(data, client_address):
             return f"{RED}Session ID {sid} does not exist.{RESET}"
 
     # ------------------------------------------------------------------ meterpreter
-    if command.startswith("meterpreter"):
+    elif command.startswith("meterpreter"):
         parts = data.strip().split(maxsplit=2)
         if len(parts) < 3:
             return f"{RED}Usage: meterpreter <session_id> <command>{RESET}"
@@ -874,7 +874,7 @@ def handle_message(data, client_address):
         return "\n".join([f"ID {jid}: {info['name']}" for jid, info in jobs_dict.items()])
 
     # ------------------------------------------------------------------ quit
-    if command == "quit":
+    elif command == "quit":
         if server is not None:
             server.exit()
             return f"{GREEN}[+] Server shutting down as requested.{RESET}"
